@@ -40,13 +40,16 @@ impl Default for BackendPlaybackState {
 pub struct GstPlayer {
     pub sender: Sender<PlaybackAction>,
     pub pipeline: gst::Pipeline,
+    pub pipeline_next: gst::Pipeline, // Second pipeline for crossfade
+    pub active_pipeline: Cell<u8>, // 0 = primary, 1 = secondary
     pub state: Cell<BackendPlaybackState>,
     pub clock_id: RefCell<Option<gst::PeriodicClockId>>,
     pub clock: RefCell<Option<gst::Clock>>,
     // pub tick: Cell<u64>,
     pub duration: RefCell<Option<f64>>,
     pub volume: Cell<f64>,
-
+    pub crossfade_duration: Cell<f64>, // Crossfade duration in seconds
+    pub is_crossfading: Cell<bool>,
 }
 
 impl GstPlayer {
@@ -56,24 +59,45 @@ impl GstPlayer {
             .downcast::<gst::Pipeline>()
             .unwrap();
         
+        let pipeline_next = gst::ElementFactory::make_with_name("playbin3", None)
+            .unwrap()
+            .downcast::<gst::Pipeline>()
+            .unwrap();
+        
         let gstplayer = Rc::new(Self {
             sender: player_sender,
             pipeline,
+            pipeline_next,
+            active_pipeline: Cell::new(0),
             state: Cell::new(BackendPlaybackState::default()),
             clock_id: RefCell::new(None),
             clock: RefCell::new(None),
             // tick: Cell::new(0),
             duration: RefCell::new(None),
             volume: Cell::new(0.0),
-
+            crossfade_duration: Cell::new(3.0),
+            is_crossfading: Cell::new(false),
         });
 
         gstplayer.clone().connect_bus();
+        gstplayer.clone().connect_bus_next();
         gstplayer
     }
 
     pub fn pipeline(&self) -> &gst::Pipeline {
-        &self.pipeline
+        if self.active_pipeline.get() == 0 {
+            &self.pipeline
+        } else {
+            &self.pipeline_next
+        }
+    }
+
+    pub fn other_pipeline(&self) -> &gst::Pipeline {
+        if self.active_pipeline.get() == 0 {
+            &self.pipeline_next
+        } else {
+            &self.pipeline
+        }
     }
 
 
@@ -120,7 +144,21 @@ impl GstPlayer {
     pub fn set_uri(&self, uri: String) {
         let uri_encoded = urlencoding::encode(&uri);
         let replaced = uri_encoded.replace("%2F", "/");
-        self.pipeline.set_property("uri", format!("file:{}", replaced).to_value());
+        self.pipeline().set_property("uri", format!("file:{}", replaced).to_value());
+    }
+
+    pub fn set_uri_next(&self, uri: String) {
+        let uri_encoded = urlencoding::encode(&uri);
+        let replaced = uri_encoded.replace("%2F", "/");
+        self.other_pipeline().set_property("uri", format!("file:{}", replaced).to_value());
+    }
+
+    pub fn set_crossfade_duration(&self, duration: f64) {
+        self.crossfade_duration.set(duration.clamp(0.0, 12.0));
+    }
+
+    pub fn crossfade_duration(&self) -> f64 {
+        self.crossfade_duration.get()
     }
 
     //VOLUME
@@ -136,16 +174,27 @@ impl GstPlayer {
             set_volume,
         );
         self.pipeline.set_property_from_value("volume", &linear_volume.to_value());
+        self.pipeline_next.set_property_from_value("volume", &linear_volume.to_value());
         self.volume.set(linear_volume);
     }
 
     fn set_volume_internal(&self) {
         self.pipeline.set_property_from_value("volume", &self.volume.get().to_value());
+        self.pipeline_next.set_property_from_value("volume", &self.volume.get().to_value());
+    }
+
+    fn set_volume_for_pipeline(&self, pipeline: &gst::Pipeline, volume: f64) {
+        let linear_volume = gst_audio::StreamVolume::convert_volume(
+            gst_audio::StreamVolumeFormat::Cubic,
+            gst_audio::StreamVolumeFormat::Linear,
+            volume.clamp(0.0, 1.0),
+        );
+        pipeline.set_property_from_value("volume", &linear_volume.to_value());
     }
 
 
     pub fn volume(&self) -> f64 {
-        self.pipeline.property("volume")
+        self.pipeline().property("volume")
     }
 
     //POSITION
@@ -244,19 +293,36 @@ impl GstPlayer {
         bus.add_watch_local(
             clone!(@strong self as this => @default-return Continue(false), move |_, message| {
                 let backend = this.clone();
-                backend.handle_bus_message(message)
+                backend.handle_bus_message(message, 0)
             }),
         )
         .unwrap();
         //debug!("connect bus")
     }
 
-    fn handle_bus_message(self: Rc<Self>, message: &gst::Message) -> Continue {
+    fn connect_bus_next(self: Rc<Self>) {
+        let bus = self.pipeline_next.bus().unwrap();
+        bus.add_watch_local(
+            clone!(@strong self as this => @default-return Continue(false), move |_, message| {
+                let backend = this.clone();
+                backend.handle_bus_message(message, 1)
+            }),
+        )
+        .unwrap();
+        //debug!("connect bus next")
+    }
+
+    fn handle_bus_message(self: Rc<Self>, message: &gst::Message, pipeline_id: u8) -> Continue {
         use gst::MessageView;
 
         match message.view() {
             MessageView::Error(ref message) => self.on_bus_error(message),
-            MessageView::Eos(_) => self.on_bus_eos(),
+            MessageView::Eos(_) => {
+                // Only trigger EOS if it's from the active pipeline
+                if pipeline_id == self.active_pipeline.get() {
+                    self.on_bus_eos()
+                }
+            },
             MessageView::StateChanged(ref message) => self.on_gst_state_changed(message),
             MessageView::NewClock(ref message) => self.on_new_clock(message),
             // MessageView::Element(ref message) => self.on_bus_element(message),
@@ -336,7 +402,10 @@ impl GstPlayer {
     }
 
     fn on_gst_state_changed(&self, message: &gst::message::StateChanged) {
-        if message.src() != Some(self.pipeline.upcast_ref::<gst::Object>()) {
+        let is_primary = message.src() == Some(self.pipeline.upcast_ref::<gst::Object>());
+        let is_secondary = message.src() == Some(self.pipeline_next.upcast_ref::<gst::Object>());
+        
+        if !is_primary && !is_secondary {
             return;
         }
 
@@ -344,35 +413,141 @@ impl GstPlayer {
 
         debug!("BACKEND gst state changed: `{:?}` -> `{:?}`", message.old(), gst_state);
 
-        let backend_state = match gst_state {
-            gst::State::Null => BackendPlaybackState::Stopped,
-            gst::State::Ready => BackendPlaybackState::Loading,
-            gst::State::Paused => BackendPlaybackState::Paused,
-            gst::State::Playing => BackendPlaybackState::Playing,
-            _ => return,
-        };
+        // Only update state for the active pipeline
+        if (is_primary && self.active_pipeline.get() == 0) || 
+           (is_secondary && self.active_pipeline.get() == 1) {
+            let backend_state = match gst_state {
+                gst::State::Null => BackendPlaybackState::Stopped,
+                gst::State::Ready => BackendPlaybackState::Loading,
+                gst::State::Paused => BackendPlaybackState::Paused,
+                gst::State::Playing => BackendPlaybackState::Playing,
+                _ => return,
+            };
 
-        if self.state.get() != backend_state {
-            self.state.set(backend_state);
-            send!(self.sender, PlaybackAction::PlaybackState(backend_state));
+            if self.state.get() != backend_state {
+                self.state.set(backend_state);
+                send!(self.sender, PlaybackAction::PlaybackState(backend_state));
+            }
+
+            //pipeline will change volume sometimes?
+            if backend_state == BackendPlaybackState::Playing && self.volume() != self.volume.get() {
+                //debug!("RESET VOLUME {:?}, {:?}", self.volume.get(), self.volume());
+                self.set_volume_internal();
+                //self.set_volume(self.volume.get())
+            }
         }
-
-        //pipeline will change volume sometimes?
-        if backend_state == BackendPlaybackState::Playing && self.volume() != self.volume.get() {
-            //debug!("RESET VOLUME {:?}, {:?}", self.volume.get(), self.volume());
-            self.set_volume_internal();
-            //self.set_volume(self.volume.get())
-        }        
     }
 
     pub fn seek(&self, seconds: u64) {
         //self._seek = self.pipeline.seek_simple(Gst.Format.TIME, Gst.SeekFlags.FLUSH | Gst.SeekFlags.KEY_UNIT, seconds * Gst.SECOND)
 
-        match self.pipeline.seek_simple(gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT, seconds * gst::ClockTime::SECOND) {
+        match self.pipeline().seek_simple(gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT, seconds * gst::ClockTime::SECOND) {
             Ok(_) => {
                 debug!("seek success");
             },
             Err(_) => ()
         }
     }
+
+    // CROSSFADE METHODS
+    pub fn start_crossfade(&self, next_uri: String) {
+        if self.is_crossfading.get() {
+            debug!("Already crossfading, ignoring start_crossfade");
+            return;
+        }
+
+        debug!("Starting crossfade to next track");
+        self.is_crossfading.set(true);
+
+        // Prepare next track on the inactive pipeline
+        let next_pipeline = self.other_pipeline();
+        let uri_encoded = urlencoding::encode(&next_uri);
+        let replaced = uri_encoded.replace("%2F", "/");
+        next_pipeline.set_property("uri", format!("file:{}", replaced).to_value());
+        
+        // Set initial volume to 0 for fade-in
+        self.set_volume_for_pipeline(next_pipeline, 0.0);
+        
+        // Start playing the next track
+        if let Err(e) = next_pipeline.set_state(gst::State::Playing) {
+            error!("Failed to start next pipeline: {}", e);
+            self.is_crossfading.set(false);
+            return;
+        }
+
+        // Start the crossfade animation
+        self.clone().perform_crossfade();
+    }
+
+    fn perform_crossfade(self: Rc<Self>) {
+        let crossfade_duration = self.crossfade_duration.get();
+        let steps = 50; // Number of volume adjustment steps
+        let step_duration = Duration::from_millis((crossfade_duration * 1000.0 / steps as f64) as u64);
+        let target_volume = self.volume.get();
+
+        let current_pipeline = if self.active_pipeline.get() == 0 {
+            self.pipeline.clone()
+        } else {
+            self.pipeline_next.clone()
+        };
+
+        let next_pipeline = if self.active_pipeline.get() == 0 {
+            self.pipeline_next.clone()
+        } else {
+            self.pipeline.clone()
+        };
+
+        // Perform the crossfade gradually
+        glib::source::timeout_add_local(
+            step_duration,
+            clone!(@strong self as this, @strong current_pipeline, @strong next_pipeline => @default-return Continue(false), move || {
+                static mut STEP: i32 = 0;
+                
+                unsafe {
+                    STEP += 1;
+                    let progress = STEP as f64 / steps as f64;
+                    
+                    if progress >= 1.0 {
+                        // Crossfade complete
+                        this.set_volume_for_pipeline(&next_pipeline, target_volume);
+                        this.set_volume_for_pipeline(&current_pipeline, 0.0);
+                        
+                        // Stop and clean up the old pipeline
+                        let _ = current_pipeline.set_state(gst::State::Null);
+                        
+                        // Switch active pipeline
+                        this.active_pipeline.set(if this.active_pipeline.get() == 0 { 1 } else { 0 });
+                        this.is_crossfading.set(false);
+                        
+                        STEP = 0;
+                        return Continue(false);
+                    }
+                    
+                    // Fade out current, fade in next
+                    let current_vol = target_volume * (1.0 - progress);
+                    let next_vol = target_volume * progress;
+                    
+                    this.set_volume_for_pipeline(&current_pipeline, current_vol);
+                    this.set_volume_for_pipeline(&next_pipeline, next_vol);
+                    
+                    Continue(true)
+                }
+            })
+        );
+    }
+
+    pub fn should_start_crossfade(&self) -> bool {
+        if self.is_crossfading.get() {
+            return false;
+        }
+
+        if let Some(duration) = self.pipeline_duration() {
+            if let Some(position) = self.pipeline_position() {
+                let remaining = duration - position as f64;
+                return remaining <= self.crossfade_duration.get() && remaining > 0.0;
+            }
+        }
+        false
+    }
 }
+

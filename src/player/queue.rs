@@ -390,5 +390,100 @@ impl Queue {
     fn queue_len(&self) -> usize {
         self.queue.borrow().len()
     }
+
+    // Peek at the next track without advancing the position
+    pub fn peek_next(&self) -> Option<Rc<Track>> {
+        if self.is_empty() {
+            return None;
+        }
+
+        let queue_length = self.queue.borrow().len() as u64;
+        let next_position = self.current_position.get() + 1;
+
+        match self.repeat_mode.get() {
+            RepeatMode::Normal => {
+                if next_position >= queue_length {
+                    None
+                } else {
+                    self.queue.borrow().get(next_position as usize).cloned()
+                }
+            },
+            RepeatMode::Loop => {
+                let pos = if next_position >= queue_length {
+                    0
+                } else {
+                    next_position
+                };
+                self.queue.borrow().get(pos as usize).cloned()
+            },
+            RepeatMode::LoopSong => {
+                self.current_track.borrow().clone()
+            },
+            RepeatMode::Shuffle => {
+                if self.shuffle_loop.get() {
+                    let pos = if next_position >= queue_length {
+                        0
+                    } else {
+                        next_position
+                    };
+                    self.queue.borrow().get(pos as usize).cloned()
+                } else {
+                    if next_position >= queue_length {
+                        None
+                    } else {
+                        self.queue.borrow().get(next_position as usize).cloned()
+                    }
+                }
+            },
+        }
+    }
+
+    // Advance position during crossfade (called when crossfade starts)
+    pub fn advance_for_crossfade(&self) {
+        if self.is_empty() {
+            return;
+        }
+
+        let queue_length = self.queue.borrow().len() as u64;
+        let next_position = self.current_position.get() + 1;
+
+        match self.repeat_mode.get() {
+            RepeatMode::Normal => {
+                if next_position < queue_length {
+                    self.current_position.set(next_position);
+                    self.current_song_update();
+                }
+            },
+            RepeatMode::Loop => {
+                let pos = if next_position >= queue_length {
+                    0
+                } else {
+                    next_position
+                };
+                self.current_position.set(pos);
+                self.current_song_update();
+            },
+            RepeatMode::LoopSong => {
+                // Don't advance for loop song
+                send!(self.sender, QueueAction::QueuePositionUpdate(self.current_position.get()));
+            },
+            RepeatMode::Shuffle => {
+                if self.shuffle_loop.get() {
+                    let pos = if next_position >= queue_length {
+                        0
+                    } else {
+                        next_position
+                    };
+                    self.current_position.set(pos);
+                    self.current_song_update();
+                } else {
+                    if next_position < queue_length {
+                        self.current_position.set(next_position);
+                        self.current_song_update();
+                    }
+                }
+            },
+        }
+    }
 }
     

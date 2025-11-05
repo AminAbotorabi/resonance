@@ -109,5 +109,18 @@
       <default>true</default>
     </key>
 
+    <key name="crossfade-enabled" type="b">
+      <default>false</default>
+      <summary>Enable Crossfade</summary>
+      <description>Enable crossfading between tracks</description>
+    </key>
+
+    <key name="crossfade-duration" type="d">
+      <range min="0.0" max="12.0"/>
+      <default>3.0</default>
+      <summary>Crossfade Duration</summary>
+      <description>Duration of crossfade in seconds</description>
+    </key>
+
 	</schema>
 </schemalist>

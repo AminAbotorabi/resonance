@@ -61,6 +61,7 @@ pub struct Player {
     pub lastfm: Rc<ResonanceLastFM>,
     pub lastfm_enabled: Cell<bool>,
     pub lastfm_sender: Sender<LastFmAction>,
+    pub crossfade_enabled: Cell<bool>,
 }
 
 impl Player {
@@ -102,6 +103,7 @@ impl Player {
             lastfm,
             lastfm_enabled: Cell::new(false),
             lastfm_sender,
+            crossfade_enabled: Cell::new(false),
         };
         
         let player = Rc::new(p);
@@ -121,6 +123,8 @@ impl Player {
         self.discord_enabled.set(settings.boolean("discord-rich-presence"));
         self.lastfm_enabled.set(settings.boolean("last-fm-enabled"));
         self.commit_threshold.set(settings.double("play-commit-threshold"));
+        self.crossfade_enabled.set(settings.boolean("crossfade-enabled"));
+        self.backend.set_crossfade_duration(settings.double("crossfade-duration"));
     }
 
     fn setup_channels(self: Rc<Self>) {
@@ -237,6 +241,16 @@ impl Player {
         let progress = tick as f64 / self.state().duration();
         if progress > self.commit_threshold.get() && !self.committed.get() {
             self.record_play();
+        }
+
+        // Check if we should start crossfading
+        if self.crossfade_enabled.get() && self.backend.should_start_crossfade() {
+            if let Some(next_track) = self.queue().peek_next() {
+                debug!("Triggering crossfade to next track");
+                self.backend.start_crossfade(next_track.uri());
+                // Pre-advance the queue position so the UI updates
+                self.queue().advance_for_crossfade();
+            }
         }
     }
 

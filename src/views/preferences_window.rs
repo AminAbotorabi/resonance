@@ -123,6 +123,15 @@ mod imp {
         #[template_child(id = "reset_default_discord")]
         pub reset_default_discord: TemplateChild<gtk::Button>,
 
+        #[template_child(id = "switch_crossfade")]
+        pub switch_crossfade: TemplateChild<gtk::Switch>,
+
+        #[template_child(id = "spin_crossfade_duration")]
+        pub spin_crossfade_duration: TemplateChild<gtk::SpinButton>,
+
+        #[template_child(id = "crossfade_adjustment")]
+        pub crossfade_adjustment: TemplateChild<gtk::Adjustment>,
+
         pub folder_dialog: RefCell<Option<gtk::FileChooserNative>>,
         pub dir_rows: RefCell<Option<Vec<adw::ActionRow>>>,
         pub settings: gio::Settings,
@@ -178,6 +187,9 @@ mod imp {
                 reset_default_genres: TemplateChild::default(),
                 reset_default_playback: TemplateChild::default(),
                 reset_default_discord: TemplateChild::default(),
+                switch_crossfade: TemplateChild::default(),
+                spin_crossfade_duration: TemplateChild::default(),
+                crossfade_adjustment: TemplateChild::default(),
                 dir_rows: RefCell::new(None),
                 folder_dialog: RefCell::new(None),
                 settings: util::settings_manager(),
@@ -367,6 +379,16 @@ impl PreferencesWindow {
 
         imp.settings
             .bind("shuffle-mode-loop", &*imp.switch_loop_shuffle, "active")
+            .flags(SettingsBindFlags::DEFAULT)
+            .build();
+
+        imp.settings
+            .bind("crossfade-enabled", &*imp.switch_crossfade, "active")
+            .flags(SettingsBindFlags::DEFAULT)
+            .build();
+
+        imp.settings
+            .bind("crossfade-duration", &*imp.crossfade_adjustment, "value")
             .flags(SettingsBindFlags::DEFAULT)
             .build();
 
