@@ -17,7 +17,7 @@ mod imp {
     use super::*;
     use glib::subclass::Signal;
     use once_cell::sync::Lazy;
-    
+
     #[derive(Debug)]
     pub struct VolumeWidgetPriv {
         pub muted_img: gtk::Image,
@@ -28,8 +28,6 @@ mod imp {
         pub current_volume: Cell<f64>,
         pub revealer: gtk::Revealer,
         pub button: gtk::Button,
-
-
     }
 
     #[glib::object_subclass]
@@ -39,7 +37,7 @@ mod imp {
         type ParentType = gtk::Box;
 
         fn new() -> Self {
-            let high_img =  gtk::Image::from_icon_name("audio-volume-high-symbolic");
+            let high_img = gtk::Image::from_icon_name("audio-volume-high-symbolic");
             let scale = VolumeScale::new();
             let revealer = gtk::Revealer::new();
             revealer.set_transition_type(gtk::RevealerTransitionType::SlideRight);
@@ -71,14 +69,13 @@ mod imp {
 
         fn signals() -> &'static [Signal] {
             static SIGNALS: Lazy<Vec<Signal>> = Lazy::new(|| {
-                vec![
-                    Signal::builder("value-changed").param_types([<f32>::static_type()]).build(),
-                ]
+                vec![Signal::builder("value-changed")
+                    .param_types([<f32>::static_type()])
+                    .build()]
             });
 
             SIGNALS.as_ref()
         }
-
     }
 
     impl WidgetImpl for VolumeWidgetPriv {}
@@ -90,7 +87,6 @@ glib::wrapper! {
     pub struct VolumeWidget(ObjectSubclass<imp::VolumeWidgetPriv>)
     @extends gtk::Box, gtk::Widget;
 }
-
 
 impl VolumeWidget {
     pub fn new() -> VolumeWidget {
@@ -104,7 +100,6 @@ impl VolumeWidget {
         self.set_spacing(5);
         self.append(&imp.button);
         self.append(&imp.revealer);
-
 
         imp.scale.connect_local(
             "value-changed",
@@ -122,13 +117,14 @@ impl VolumeWidget {
             }),
         );
 
-        imp.button.connect_clicked(glib::clone!(@strong self as this => @default-panic, move |_button| {
-            let imp = this.imp();
-            let revealed = !imp.revealer.get_visible();
-            imp.revealer.set_visible(revealed);
-            imp.revealer.set_reveal_child(revealed);
-        }));
-
+        imp.button.connect_clicked(
+            glib::clone!(@strong self as this => @default-panic, move |_button| {
+                let imp = this.imp();
+                let revealed = !imp.revealer.get_visible();
+                imp.revealer.set_visible(revealed);
+                imp.revealer.set_reveal_child(revealed);
+            }),
+        );
 
         // ctrl = Gtk.EventControllerScroll(flags=Gtk.EventControllerScrollFlags.BOTH_AXES)
         // ctrl.connect("scroll", self._on_scroll)
@@ -146,7 +142,6 @@ impl VolumeWidget {
         self.add_controller(ctrl);
     }
 
-
     fn on_scale_value_change(&self, display_volume: f64) {
         let imp = self.imp();
         if display_volume <= 0.05 {
@@ -159,9 +154,5 @@ impl VolumeWidget {
             imp.button.set_child(Some(&imp.high_img));
         }
         imp.current_volume.set(display_volume);
-
-
     }
-
 }
-    

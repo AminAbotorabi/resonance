@@ -5,9 +5,9 @@
  */
 
 use gtk::prelude::*;
-use gtk::{subclass::prelude::*, gdk, glib, graphene};
+use gtk::{gdk, glib, graphene, subclass::prelude::*};
 
-use std::cell::{RefCell, Cell};
+use std::cell::{Cell, RefCell};
 
 mod imp {
     use super::*;
@@ -43,8 +43,6 @@ mod imp {
             snapshot.append_color(&color, &rect);
         }
     }
-
-    
 }
 
 glib::wrapper! {

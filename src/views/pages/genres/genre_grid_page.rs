@@ -9,26 +9,27 @@ use adw::subclass::prelude::*;
 
 use gtk::{gio, gio::ListStore, glib, glib::clone, CompositeTemplate};
 
-use std::{cell::{RefCell, Cell}, rc::Rc};
-use std::time::Duration;
 use log::debug;
+use std::time::Duration;
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
 
 use crate::model::genre::Genre;
-use crate::views::generic_flowbox_child::{GenericFlowboxChild, GenericChild};
 use crate::search::{FuzzyFilter, SearchSortObject};
 use crate::sort::{FuzzySorter, SortMethod};
 use crate::util::model;
+use crate::views::generic_flowbox_child::{GenericChild, GenericFlowboxChild};
 
 use super::genre_detail_page::GenreDetailPage;
 
 mod imp {
     use super::*;
     use glib::subclass::Signal;
-    use glib::{
-        Value, ParamSpec, ParamSpecBoolean, ParamSpecEnum
-    };
+    use glib::{ParamSpec, ParamSpecBoolean, ParamSpecEnum, Value};
     use once_cell::sync::Lazy;
-    
+
     #[derive(Debug, Default, CompositeTemplate)]
     #[template(resource = "/io/github/nate_xyz/Resonance/genre_grid_page.ui")]
     pub struct GenreGridPagePriv {
@@ -86,7 +87,6 @@ mod imp {
         fn instance_init(obj: &glib::subclass::InitializingObject<Self>) {
             obj.init_template();
         }
-
     }
 
     impl ObjectImpl for GenreGridPagePriv {
@@ -96,20 +96,23 @@ mod imp {
         }
 
         fn properties() -> &'static [ParamSpec] {
-            static PROPERTIES: Lazy<Vec<ParamSpec>> =
-                Lazy::new(|| vec![
-                    ParamSpecBoolean::builder("hidden").default_value(false).build(),
-                    ParamSpecEnum::builder::<SortMethod>("sort-method").build()
-                ]);
+            static PROPERTIES: Lazy<Vec<ParamSpec>> = Lazy::new(|| {
+                vec![
+                    ParamSpecBoolean::builder("hidden")
+                        .default_value(false)
+                        .build(),
+                    ParamSpecEnum::builder::<SortMethod>("sort-method").build(),
+                ]
+            });
             PROPERTIES.as_ref()
         }
-    
+
         fn set_property(&self, _id: usize, value: &Value, pspec: &ParamSpec) {
             match pspec.name() {
                 "hidden" => {
                     let hidden_ = value.get().expect("The value needs to be of type `bool`.");
                     self.hidden.replace(hidden_);
-                },
+                }
                 "sort-method" => {
                     let sort_method = value.get().expect("The value needs to be of type `enum`.");
                     self.sort_method.replace(sort_method);
@@ -117,7 +120,7 @@ mod imp {
                 _ => unimplemented!(),
             }
         }
-    
+
         fn property(&self, _id: usize, pspec: &ParamSpec) -> Value {
             match pspec.name() {
                 "hidden" => self.hidden.get().to_value(),
@@ -128,15 +131,13 @@ mod imp {
 
         fn signals() -> &'static [Signal] {
             static SIGNALS: Lazy<Vec<Signal>> = Lazy::new(|| {
-                vec![
-                    Signal::builder("genre-selected")
-                        .param_types([<i64>::static_type()])
-                        .build()]
+                vec![Signal::builder("genre-selected")
+                    .param_types([<i64>::static_type()])
+                    .build()]
             });
 
             SIGNALS.as_ref()
         }
-
     }
 
     impl WidgetImpl for GenreGridPagePriv {}
@@ -149,7 +150,6 @@ glib::wrapper! {
     @extends gtk::Box, gtk::Widget;
 }
 
-
 impl GenreGridPage {
     pub fn new() -> GenreGridPage {
         let genre_grid: GenreGridPage = glib::Object::builder::<GenreGridPage>().build();
@@ -159,11 +159,13 @@ impl GenreGridPage {
     pub fn initialize(&self) {
         let imp = self.imp();
 
-        model().connect_local("refresh-genres", false, 
-        clone!(@weak self as this => @default-return None, move |_args| {
+        model().connect_local(
+            "refresh-genres",
+            false,
+            clone!(@weak self as this => @default-return None, move |_args| {
                 this.update_view();
                 None
-            })
+            }),
         );
 
         let list_store = gio::ListStore::new(Genre::static_type());
@@ -197,14 +199,15 @@ impl GenreGridPage {
             })
         );
 
-        imp.list_box.bind_model(Some(&selection), 
-        clone!(@strong self as this => @default-panic, move |obj| {
+        imp.list_box.bind_model(
+            Some(&selection),
+            clone!(@strong self as this => @default-panic, move |obj| {
             let genre = obj.clone().downcast::<Genre>().expect("Genre is of wrong type");
             let label = gtk::Label::new(Some(&genre.name()));
             let box_ = gtk::Box::new(gtk::Orientation::Horizontal, 0);
             box_.append(&label);
             return box_.upcast::<gtk::Widget>();
-            })
+            }),
         );
 
         imp.list_store.replace(Some(Rc::new(list_store)));
@@ -243,7 +246,8 @@ impl GenreGridPage {
             }),  
         );
 
-        self.connect_notify_local(Some("sort-method"),
+        self.connect_notify_local(
+            Some("sort-method"),
             clone!(@strong self as this => move |_, _| {
                 let imp = this.imp();
                 let sort_method = imp.sort_method.get();
@@ -293,7 +297,8 @@ impl GenreGridPage {
 
     pub fn on_toggle_search_button(&self) {
         let imp = self.imp();
-        imp.search_bar.set_search_mode(!imp.search_bar.is_search_mode());
+        imp.search_bar
+            .set_search_mode(!imp.search_bar.is_search_mode());
         if !imp.search_bar.is_search_mode() {
             imp.search_bar.grab_focus();
         }
@@ -310,6 +315,4 @@ impl GenreGridPage {
     fn on_genre_click_with_id(&self, id: i64) {
         self.emit_by_name::<()>("genre-selected", &[&id]);
     }
-
 }
-    

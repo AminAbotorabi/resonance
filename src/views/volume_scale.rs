@@ -42,7 +42,6 @@ mod imp {
                 init: Cell::new(false),
             }
         }
-
     }
 
     impl ObjectImpl for VolumeScalePriv {
@@ -51,12 +50,11 @@ mod imp {
             self.obj().initialize();
         }
 
-
         fn signals() -> &'static [Signal] {
             static SIGNALS: Lazy<Vec<Signal>> = Lazy::new(|| {
-                vec![
-                    Signal::builder("value-changed").param_types([<f32>::static_type()]).build(),
-                ]
+                vec![Signal::builder("value-changed")
+                    .param_types([<f32>::static_type()])
+                    .build()]
             });
 
             SIGNALS.as_ref()
@@ -64,11 +62,21 @@ mod imp {
     }
 
     impl WidgetImpl for VolumeScalePriv {
-        fn measure(&self, orientation: gtk::Orientation, _for_size: i32,) -> (i32, i32, i32, i32) {
+        fn measure(&self, orientation: gtk::Orientation, _for_size: i32) -> (i32, i32, i32, i32) {
             if orientation == gtk::Orientation::Horizontal {
-                (self.natural_width.get() as i32 / 2 , self.natural_width.get() as i32, -1, -1)
+                (
+                    self.natural_width.get() as i32 / 2,
+                    self.natural_width.get() as i32,
+                    -1,
+                    -1,
+                )
             } else {
-                (self.widget_height.get() as i32 / 2, self.widget_height.get() as i32, -1, -1)
+                (
+                    self.widget_height.get() as i32 / 2,
+                    self.widget_height.get() as i32,
+                    -1,
+                    -1,
+                )
             }
         }
 
@@ -76,7 +84,7 @@ mod imp {
             //let color = gdk::RGBA::new(0.0, 0.0, 0.0, 1.0);
 
             let width = self.obj().width() as f32;
-            let height = self.obj().height() as f32;  
+            let height = self.obj().height() as f32;
 
             let default_height = self.widget_height.get() as f32;
             let default_y = (height - default_height) / 2.0;
@@ -86,7 +94,7 @@ mod imp {
             let background_color = "#2c2d2d";
 
             let bg_color = gdk::RGBA::parse(background_color).ok().unwrap();
-            
+
             let rect = graphene::Rect::new(0.0, default_y, width, default_height);
             let rounded_rect = gsk::RoundedRect::from_rect(rect, 5.0);
 
@@ -94,7 +102,8 @@ mod imp {
             snapshot.append_color(&bg_color, &rect);
 
             let prog_color = gdk::RGBA::parse(progress_color).ok().unwrap();
-            let progress_rect = graphene::Rect::new(0.0, default_y, self.white_width.get(), default_height);
+            let progress_rect =
+                graphene::Rect::new(0.0, default_y, self.white_width.get(), default_height);
             snapshot.append_color(&prog_color, &progress_rect);
 
             if self.suggested_visible.get() {
@@ -110,17 +119,23 @@ mod imp {
                 } else {
                     if self.suggest_pos.get() < width {
                         let diff_rect = graphene::Rect::new(
-                            self.white_width.get(), default_y, self.suggest_pos.get()-self.white_width.get(), default_height 
+                            self.white_width.get(),
+                            default_y,
+                            self.suggest_pos.get() - self.white_width.get(),
+                            default_height,
                         );
                         snapshot.append_color(&select_color, &diff_rect);
                     } else {
                         let diff_rect = graphene::Rect::new(
-                            self.white_width.get(), default_y, width-self.white_width.get(), default_height
+                            self.white_width.get(),
+                            default_y,
+                            width - self.white_width.get(),
+                            default_height,
                         );
                         snapshot.append_color(&select_color, &diff_rect);
                     }
                 }
-            } 
+            }
             snapshot.pop();
         }
     }
@@ -163,32 +178,26 @@ impl VolumeScale {
                     let new_pos = x / this.width() as f64;
                     this.set_value(new_pos);
                 }
-            })
+            }),
         );
         self.add_controller(ctrl_click);
 
         let ctrl = gtk::EventControllerMotion::new();
-        ctrl.connect_enter(
-            clone!(@strong self as this => move |_controller, _x, _y| {
-                this.imp().suggested_visible.set(true);
-                this.queue_draw()
-            })
-        );
-        ctrl.connect_leave(
-            clone!(@strong self as this => move |_controller| {
-                this.imp().suggested_visible.set(false);
-                this.queue_draw()
+        ctrl.connect_enter(clone!(@strong self as this => move |_controller, _x, _y| {
+            this.imp().suggested_visible.set(true);
+            this.queue_draw()
+        }));
+        ctrl.connect_leave(clone!(@strong self as this => move |_controller| {
+            this.imp().suggested_visible.set(false);
+            this.queue_draw()
 
-            })
-        );
-        ctrl.connect_motion(
-            clone!(@strong self as this => move |_controller, x, _y| {
-                if x > 0.0 {
-                    this.imp().suggest_pos.set(x as f32);
-                    this.queue_draw()
-                }
-            })
-        );
+        }));
+        ctrl.connect_motion(clone!(@strong self as this => move |_controller, x, _y| {
+            if x > 0.0 {
+                this.imp().suggest_pos.set(x as f32);
+                this.queue_draw()
+            }
+        }));
         self.add_controller(ctrl);
 
         let player = player();
@@ -199,19 +208,16 @@ impl VolumeScale {
                 this.on_volume_change();
             }),
         );
-
     }
-
 
     fn on_volume_change(&self) {
         let player = player();
         let volume = player.state().volume();
         if volume >= 0.0 {
-           let display_volume = volume as f32;
-           self.emit_by_name::<()>("value-changed", &[&display_volume]);
-           self.redraw(display_volume);
+            let display_volume = volume as f32;
+            self.emit_by_name::<()>("value-changed", &[&display_volume]);
+            self.redraw(display_volume);
         }
-       
     }
 
     fn redraw(&self, volume: f32) {

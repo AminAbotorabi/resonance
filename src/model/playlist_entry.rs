@@ -5,8 +5,8 @@
  */
 
 use glib::prelude::ToVariant;
-use gtk::{glib, gio};
 use gtk::subclass::prelude::*;
+use gtk::{gio, glib};
 
 use std::{cell::Cell, cell::RefCell, rc::Rc};
 
@@ -24,14 +24,12 @@ mod imp {
         pub menu: gio::Menu,
     }
 
-
     #[glib::object_subclass]
     impl ObjectSubclass for PlaylistEntryPriv {
         const NAME: &'static str = "PlaylistEntry";
         type Type = super::PlaylistEntry;
         type ParentType = glib::Object;
     }
-
 
     impl ObjectImpl for PlaylistEntryPriv {
         fn constructed(&self) {
@@ -82,52 +80,76 @@ impl PlaylistEntry {
     #[allow(dead_code)]
     fn create_menu(&self, track: Rc<Track>) {
         let imp = self.imp();
-        
+
         let menu = gio::Menu::new();
 
         let menu_item = gio::MenuItem::new(Some(&format!("Play «{}»", track.title())), None);
-        menu_item.set_action_and_target_value(Some("win.play-track"), Some(&track.id().to_variant()));
+        menu_item
+            .set_action_and_target_value(Some("win.play-track"), Some(&track.id().to_variant()));
         menu.append_item(&menu_item);
 
-        let menu_item = gio::MenuItem::new(Some(&format!("Add «{}» to Queue", track.title())), None);
-        menu_item.set_action_and_target_value(Some("win.add-track-to-queue"), Some(&track.id().to_variant()));
+        let menu_item =
+            gio::MenuItem::new(Some(&format!("Add «{}» to Queue", track.title())), None);
+        menu_item.set_action_and_target_value(
+            Some("win.add-track-to-queue"),
+            Some(&track.id().to_variant()),
+        );
         menu.append_item(&menu_item);
 
-        let menu_item = gio::MenuItem::new(Some(&format!("Play Playlist from «{}»", track.title())), None);
-        menu_item.set_action_and_target_value(Some("win.play-playlist-from-track"), Some(&imp.id.get().to_variant()));
+        let menu_item = gio::MenuItem::new(
+            Some(&format!("Play Playlist from «{}»", track.title())),
+            None,
+        );
+        menu_item.set_action_and_target_value(
+            Some("win.play-playlist-from-track"),
+            Some(&imp.id.get().to_variant()),
+        );
         menu.append_item(&menu_item);
 
         imp.menu.append_section(Some("Play"), &menu);
 
-
         let menu = gio::Menu::new();
 
         let menu_item = gio::MenuItem::new(Some("Go to Album Detail"), None);
-        menu_item.set_action_and_target_value(Some("win.go-to-album-detail"), Some(&track.album_id().to_variant()));
+        menu_item.set_action_and_target_value(
+            Some("win.go-to-album-detail"),
+            Some(&track.album_id().to_variant()),
+        );
         menu.append_item(&menu_item);
 
         let menu_item = gio::MenuItem::new(Some("Go to Artist Detail"), None);
-        menu_item.set_action_and_target_value(Some("win.go-to-artist-detail"), Some(&track.artist_id().to_variant()));
+        menu_item.set_action_and_target_value(
+            Some("win.go-to-artist-detail"),
+            Some(&track.artist_id().to_variant()),
+        );
         menu.append_item(&menu_item);
-
 
         imp.menu.append_section(Some("Navigate"), &menu);
 
         let menu = gio::Menu::new();
-        
-        let menu_item = gio::MenuItem::new(Some(&format!("Create Playlist from «{}»", track.title())), None);
-        menu_item.set_action_and_target_value(Some("win.create-playlist-from-track"), Some(&track.id().to_variant()));
+
+        let menu_item = gio::MenuItem::new(
+            Some(&format!("Create Playlist from «{}»", track.title())),
+            None,
+        );
+        menu_item.set_action_and_target_value(
+            Some("win.create-playlist-from-track"),
+            Some(&track.id().to_variant()),
+        );
         menu.append_item(&menu_item);
 
-        let menu_item = gio::MenuItem::new(Some(&format!("Add «{}» to Playlist", track.title())), None);
-        menu_item.set_action_and_target_value(Some("win.add-track-to-playlist"), Some(&track.id().to_variant()));
+        let menu_item =
+            gio::MenuItem::new(Some(&format!("Add «{}» to Playlist", track.title())), None);
+        menu_item.set_action_and_target_value(
+            Some("win.add-track-to-playlist"),
+            Some(&track.id().to_variant()),
+        );
         menu.append_item(&menu_item);
 
         imp.menu.append_section(Some("Playlist"), &menu);
     }
 
-    pub fn menu_model(&self)-> &gio::Menu {
+    pub fn menu_model(&self) -> &gio::Menu {
         &self.imp().menu
     }
 }
-    

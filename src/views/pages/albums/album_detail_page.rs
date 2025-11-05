@@ -9,20 +9,16 @@ use adw::subclass::prelude::*;
 
 use gtk::{gio, glib, glib::clone, CompositeTemplate};
 
-use std::collections::HashMap;
-use std::{cell::RefCell, rc::Rc, error::Error};
 use log::{debug, error};
+use std::collections::HashMap;
+use std::{cell::RefCell, error::Error, rc::Rc};
 
-use crate::model::{
-    album::Album,
-    track::Track,
-};
-use crate::views::{
-    disc_button::DiscButton,
-    track_entry::TrackEntry,
-};
-use crate::util::{model, player, seconds_to_string_longform, load_cover_art_pixbuf, settings_manager};
 use crate::i18n::{i18n, i18n_k};
+use crate::model::{album::Album, track::Track};
+use crate::util::{
+    load_cover_art_pixbuf, model, player, seconds_to_string_longform, settings_manager,
+};
+use crate::views::{disc_button::DiscButton, track_entry::TrackEntry};
 
 mod imp {
     use super::*;
@@ -38,7 +34,6 @@ mod imp {
         #[template_child(id = "search_entry")]
         pub search_entry: TemplateChild<gtk::SearchEntry>,
 
-        
         #[template_child(id = "art-and-info")]
         pub art_and_info: TemplateChild<gtk::Box>,
 
@@ -117,12 +112,9 @@ mod imp {
             self.parent_constructed();
             self.obj().initialize();
         }
-        
+
         fn signals() -> &'static [Signal] {
-            static SIGNALS: Lazy<Vec<Signal>> =
-                Lazy::new(
-                    || vec![Signal::builder("back").build()],
-                );
+            static SIGNALS: Lazy<Vec<Signal>> = Lazy::new(|| vec![Signal::builder("back").build()]);
 
             SIGNALS.as_ref()
         }
@@ -149,16 +141,17 @@ impl AlbumDetailPage {
 
         let settings = settings_manager();
 
-        settings.bind("full-page-back-button", &*imp.back_button, "visible")
+        settings
+            .bind("full-page-back-button", &*imp.back_button, "visible")
             .flags(gio::SettingsBindFlags::GET)
             .build();
 
         imp.popover.set_parent(self);
 
-        imp.back_button.connect_clicked(clone!(@strong self as this => move |_button| {
+        imp.back_button
+            .connect_clicked(clone!(@strong self as this => move |_button| {
                 this.emit_by_name::<()>("back", &[]);
-            })
-        );
+            }));
 
         imp.play_button.connect_clicked(
             clone!(@strong self as this => @default-panic, move |_button| {
@@ -189,18 +182,14 @@ impl AlbumDetailPage {
         );
 
         let ctrl = gtk::EventControllerMotion::new();
-        ctrl.connect_enter(
-            clone!(@strong self as this => move |_controller, _x, _y| {
-                let imp = this.imp();
-                imp.overlay_box.show();
-            })
-        );
-        ctrl.connect_leave(
-            clone!(@strong self as this => move |_controller| {
-                let imp = this.imp();
-                imp.overlay_box.hide();
-            })
-        );
+        ctrl.connect_enter(clone!(@strong self as this => move |_controller, _x, _y| {
+            let imp = this.imp();
+            imp.overlay_box.show();
+        }));
+        ctrl.connect_leave(clone!(@strong self as this => move |_controller| {
+            let imp = this.imp();
+            imp.overlay_box.hide();
+        }));
         imp.overlay.add_controller(ctrl);
 
         // let ctrl = gtk::GestureClick::new();
@@ -248,13 +237,12 @@ impl AlbumDetailPage {
 
         match imp.album.borrow().as_ref() {
             Some(album) => {
-
                 if !imp.track_box.borrow().as_ref().is_none() {
                     debug!("removing previous track box");
                     imp.track_bin.set_child(gtk::Widget::NONE);
                     imp.track_box.borrow().as_ref().unwrap().unparent();
                 }
-                
+
                 let track_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
                 let disc_map = album.discs();
                 let num_discs = disc_map.len();
@@ -272,7 +260,6 @@ impl AlbumDetailPage {
                         // add_button.connect_clicked(clone!(@weak self.on_disc_add_button));
                         box_.append(&disc_button);
 
-
                         track_box.append(&box_);
                     }
 
@@ -280,7 +267,13 @@ impl AlbumDetailPage {
                     album_vec.sort_by(|a, b| a.0.cmp(b.0));
                     for (track_n, track) in album_vec {
                         let track = track.clone();
-                        let entry = TrackEntry::new(album.clone(), track, *track_n as i32, *disc_n as i32, 300);
+                        let entry = TrackEntry::new(
+                            album.clone(),
+                            track,
+                            *track_n as i32,
+                            *disc_n as i32,
+                            300,
+                        );
                         // entry.set_player(self.player.borrow().as_ref().unwrap().clone());
 
                         track_box.append(&entry);
@@ -290,7 +283,7 @@ impl AlbumDetailPage {
 
                 imp.track_bin.set_child(Some(&track_box));
                 imp.track_box.replace(Some(track_box));
-                
+
                 //SET LABELS
                 imp.artist_label.set_label(&album.artist());
                 imp.title_label.set_label(&album.title());
@@ -304,7 +297,10 @@ impl AlbumDetailPage {
                 if n_tracks <= 1 {
                     imp.track_amount_label.set_label(&i18n("1 track"));
                 } else {
-                    imp.track_amount_label.set_label(&i18n_k("{number_of_tracks} tracks", &[("number_of_tracks", &format!("{}", n_tracks))]));
+                    imp.track_amount_label.set_label(&i18n_k(
+                        "{number_of_tracks} tracks",
+                        &[("number_of_tracks", &format!("{}", n_tracks))],
+                    ));
                 }
 
                 let duration = album.duration();
@@ -341,7 +337,6 @@ impl AlbumDetailPage {
         Ok(())
     }
 
-  
     fn album(&self) -> Rc<Album> {
         self.imp().album.borrow().as_ref().unwrap().clone()
     }

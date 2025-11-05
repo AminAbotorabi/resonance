@@ -9,8 +9,8 @@ use adw::subclass::prelude::*;
 
 use gtk::{glib, glib::clone, CompositeTemplate};
 
-use crate::util::settings_manager;
 use crate::i18n::i18n;
+use crate::util::settings_manager;
 
 mod imp {
     use super::*;
@@ -20,7 +20,6 @@ mod imp {
     pub struct AlphaDialogPriv {
         #[template_child(id = "message_box")]
         pub message_box: TemplateChild<gtk::Box>,
-
     }
 
     #[glib::object_subclass]

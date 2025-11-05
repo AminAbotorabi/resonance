@@ -4,8 +4,8 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-use gtk::{gdk_pixbuf::Pixbuf, gdk_pixbuf, gdk, glib};
-use gtk::{subclass::prelude::*, prelude::*};
+use gtk::{gdk, gdk_pixbuf, gdk_pixbuf::Pixbuf, glib};
+use gtk::{prelude::*, subclass::prelude::*};
 use std::{cell::RefCell, rc::Rc};
 
 use crate::util;
@@ -16,8 +16,7 @@ mod imp {
     #[derive(Debug, Default)]
     pub struct CoverArtPixbufLoader {
         pub pixbuf: RefCell<Option<Rc<Pixbuf>>>,
-        pub palette: RefCell<Option<Vec<gdk::RGBA>>>
-        //pub data: RefCell<Option<Vec<u8>>>,
+        pub palette: RefCell<Option<Vec<gdk::RGBA>>>, //pub data: RefCell<Option<Vec<u8>>>,
     }
 
     #[glib::object_subclass]
@@ -61,7 +60,7 @@ impl CoverArtPixbufLoader {
         let finished_pixbuf = loader.pixbuf().unwrap();
         let palette = util::load_palette(&finished_pixbuf);
         let finished_pixbuf = Rc::new(finished_pixbuf);
-        
+
         imp.pixbuf.replace(Some(finished_pixbuf));
         imp.palette.replace(palette);
         //imp.data.replace(Some(data));
@@ -73,11 +72,8 @@ impl CoverArtPixbufLoader {
             Some(p) => {
                 let pixbuf = Rc::clone(p);
                 Ok(pixbuf)
-            },
-            None => {
-                Err("Unable to access pixbuf".to_string())
             }
-
+            None => Err("Unable to access pixbuf".to_string()),
         }
     }
 

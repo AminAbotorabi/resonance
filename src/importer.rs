@@ -7,13 +7,13 @@
 use gtk::{gio, glib::Sender};
 use gtk_macros::send;
 
+use chrono::{DateTime, Utc};
+use log::{debug, error};
+use pyo3::prelude::*;
+use regex::Regex;
+use rusqlite::Transaction;
 use std::cell::RefCell;
 use std::{collections::HashMap, error::Error, fmt, fs};
-use log::{debug, error};
-use rusqlite::Transaction;
-use pyo3::prelude::*;
-use chrono::{DateTime, Utc};
-use regex::Regex;
 
 use super::database::DatabaseAction;
 use super::util;
@@ -24,7 +24,6 @@ struct ImportError(String);
 impl fmt::Display for ImportError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Import error: {}", self.0)
-        
     }
 }
 impl Error for ImportError {}
@@ -43,7 +42,6 @@ struct LoggingStdout {
     last_update_time: RefCell<Option<Instant>>,
 }
 
-
 #[pymethods]
 impl LoggingStdout {
     #[new]
@@ -59,7 +57,7 @@ impl LoggingStdout {
             error!("{}", data);
         } else if data.contains("DEBUG") {
             debug!("{}", data);
-        } else if data.contains("%"){
+        } else if data.contains("%") {
             if let Some(start) = self.last_update_time.take() {
                 if start.elapsed() > Duration::from_secs(3) {
                     if let Some(window) = util::window() {
@@ -102,18 +100,34 @@ impl Importer {
 
                 if let Some(w) = window {
                     w.set_import_message("Extracting tags from music files.");
-                
-                    let code_main = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/python/main.py"));
-                    let code_extracting = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/python/extracting.py"));
-                    let code_importer = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/python/importer.py"));
-                    let code_translate_dicts = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/python/translate_dicts.py"));
-                    let code_util = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/python/util.py"));
-        
+
+                    let code_main =
+                        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/python/main.py"));
+                    let code_extracting = include_str!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/src/python/extracting.py"
+                    ));
+                    let code_importer = include_str!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/src/python/importer.py"
+                    ));
+                    let code_translate_dicts = include_str!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/src/python/translate_dicts.py"
+                    ));
+                    let code_util =
+                        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/python/util.py"));
+
                     PyModule::from_code(py, code_util, "util", "util")?;
-                    PyModule::from_code(py, code_translate_dicts,"translate_dicts", "translate_dicts")?;
+                    PyModule::from_code(
+                        py,
+                        code_translate_dicts,
+                        "translate_dicts",
+                        "translate_dicts",
+                    )?;
                     PyModule::from_code(py, code_extracting, "extracting", "extracting")?;
                     PyModule::from_code(py, code_importer, "importer", "importer")?;
-        
+
                     let module = PyModule::from_code(py, code_main, "main", "")?;
                     let args = (&folder_path,);
                     let object: Py<PyAny> = module
@@ -124,10 +138,13 @@ impl Importer {
                             e
                         })?
                         .into();
-        
+
                     debug!("retrieving tags & cover art ... ");
-        
-                    let all: (HashMap<String, HashMap<String, HashMap<String, MapVal>>>, HashMap<String, &[u8]>) = object.extract(py)?;
+
+                    let all: (
+                        HashMap<String, HashMap<String, HashMap<String, MapVal>>>,
+                        HashMap<String, &[u8]>,
+                    ) = object.extract(py)?;
                     let (tags, bytes_map) = all;
                     if tags.is_empty() {
                         error!("Nothing extracted.");
@@ -139,7 +156,10 @@ impl Importer {
                         vec_byte_map.insert(uri.clone(), (*b).to_vec());
                     }
 
-                    send!(sender, DatabaseAction::ConstructFromTags((folder_path, tags, vec_byte_map)));
+                    send!(
+                        sender,
+                        DatabaseAction::ConstructFromTags((folder_path, tags, vec_byte_map))
+                    );
                 } else {
                     error!("Unable to retrieve window.")
                 }
@@ -149,16 +169,20 @@ impl Importer {
         });
     }
 
-    pub fn build_database_from_tags(&self, tx: &Transaction, folder_uri: String, tags: HashMap<String, HashMap<String, HashMap<String, MapVal>>>, cover_art_map: HashMap<String, Vec<u8>>) -> Result<(), Box<dyn Error>> {
+    pub fn build_database_from_tags(
+        &self,
+        tx: &Transaction,
+        folder_uri: String,
+        tags: HashMap<String, HashMap<String, HashMap<String, MapVal>>>,
+        cover_art_map: HashMap<String, Vec<u8>>,
+    ) -> Result<(), Box<dyn Error>> {
         debug!("Building database from tags");
         let window = util::window();
         let database = util::database();
 
         if let Some(w) = window {
             w.set_import_message("Constructing database from tags.");
-    
         }
-
 
         let mut added_genres: HashMap<String, i64> = HashMap::new();
         let mut added_artists: HashMap<String, i64> = HashMap::new();
@@ -190,9 +214,8 @@ impl Importer {
             if cover_art_map.contains_key(&uri.clone()) {
                 cover_art = cover_art_map.get(&uri.clone());
             }
-            
-            for (type_key, type_map) in track_map {
 
+            for (type_key, type_map) in track_map {
                 match type_key.as_str() {
                     "str_list" => {
                         for (tag, tag_val) in type_map {
@@ -202,54 +225,54 @@ impl Importer {
                                 match tag.as_str() {
                                     "genre" => {
                                         genre_tag = value[0].clone();
-                                    },
+                                    }
                                     "album" => {
                                         album_tag = value[0].clone();
-                                    },
+                                    }
                                     "title" => {
                                         title_tag = value[0].clone();
-                                    },
+                                    }
                                     "albumartist" => {
                                         albumartist_tag = value[0].clone();
-                                    },
+                                    }
                                     "artist" => {
                                         artist_tag = value[0].clone();
-                                    },
+                                    }
                                     "date" => {
                                         date_tag = value[0].clone();
-                                    },
+                                    }
                                     "tracknumber" => {
-                                        let tag = re.captures(&value[0]).and_then(|cap| {
-                                            cap.get(0).map(|s| s.as_str())
-                                        });
+                                        let tag = re
+                                            .captures(&value[0])
+                                            .and_then(|cap| cap.get(0).map(|s| s.as_str()));
                                         track_number_tag = if !tag.is_none() {
                                             match tag.unwrap().parse::<u32>() {
                                                 Ok(num) => Some(num),
                                                 Err(e) => {
                                                     error!("{}: {}", tag.unwrap(), e);
                                                     None
-                                                },
+                                                }
                                             }
                                         } else {
                                             None
                                         };
-                                    },
+                                    }
                                     "discnumber" => {
-                                        let tag = re.captures(&value[0]).and_then(|cap| {
-                                            cap.get(0).map(|s| s.as_str())
-                                        });
+                                        let tag = re
+                                            .captures(&value[0])
+                                            .and_then(|cap| cap.get(0).map(|s| s.as_str()));
                                         disc_number_tag = if !tag.is_none() {
                                             match tag.unwrap().parse::<u32>() {
                                                 Ok(num) => Some(num),
                                                 Err(e) => {
                                                     error!("{}: {}", tag.unwrap(), e);
                                                     None
-                                                },
+                                                }
                                             }
                                         } else {
                                             None
                                         };
-                                    },
+                                    }
                                     _ => (),
                                 }
                             }
@@ -276,41 +299,40 @@ impl Importer {
                                     }
                                     "filetype_" => {
                                         filetype_tag = value.clone();
-                                    },
+                                    }
                                     "tracknumber" => {
-                                        let tag = re.captures(&value).and_then(|cap| {
-                                            cap.get(0).map(|s| s.as_str())
-                                        });
+                                        let tag = re
+                                            .captures(&value)
+                                            .and_then(|cap| cap.get(0).map(|s| s.as_str()));
                                         debug!("{:?}", tag);
                                         track_number_tag = if !tag.is_none() {
-                                            
                                             match tag.unwrap().parse::<u32>() {
                                                 Ok(num) => Some(num),
                                                 Err(e) => {
                                                     error!("{}: {}", tag.unwrap(), e);
                                                     None
-                                                },
+                                                }
                                             }
                                         } else {
                                             None
                                         };
-                                    },
+                                    }
                                     "discnumber" => {
-                                        let tag = re.captures(&value).and_then(|cap| {
-                                            cap.get(0).map(|s| s.as_str())
-                                        });
+                                        let tag = re
+                                            .captures(&value)
+                                            .and_then(|cap| cap.get(0).map(|s| s.as_str()));
                                         disc_number_tag = if !tag.is_none() {
                                             match tag.unwrap().parse::<u32>() {
                                                 Ok(num) => Some(num),
                                                 Err(e) => {
                                                     error!("{}: {}", tag.unwrap(), e);
                                                     None
-                                                },
+                                                }
                                             }
                                         } else {
                                             None
                                         };
-                                    },
+                                    }
                                     _ => (),
                                 }
                             }
@@ -351,14 +373,14 @@ impl Importer {
                     if album_key == "Unknown AlbumUnknown Artist" {
                         orphan_tracks += 1;
                         let in_db = database.query_orphan_tracks(&tx)? as u32;
-                        orphan_tracks+in_db
+                        orphan_tracks + in_db
                     } else {
                         error!("No track number for {}", song_key);
                         1
                     }
-                },
+                }
             };
-   
+
             // add genre to the database table
             let genre_id = if !genre_tag.is_empty() {
                 if !added_genres.contains_key(&genre_tag) {
@@ -396,7 +418,7 @@ impl Importer {
             } else {
                 None
             };
-            
+
             // add albums to the database table
             let album_id = if !added_albums.contains_key(&album_key) {
                 database.add_album_full(
@@ -413,16 +435,14 @@ impl Importer {
                 //debug!("Already added {}, retrieving from map.", album_key);
                 added_albums[&album_key]
             };
-        
+
             let duration = match duration_tag {
                 Some(d) => *d,
                 None => {
                     error!("No track duration for {}", song_key);
                     continue;
-                },
+                }
             };
-
-            
 
             let metadata = fs::metadata(uri.to_string()).unwrap();
             let modification_time = metadata.modified().unwrap();
@@ -432,7 +452,7 @@ impl Importer {
             //     w.set_import_message(&format!("Adding: {}", uri.clone()));
             // }
 
-            let track_id =  database.add_track_full(
+            let track_id = database.add_track_full(
                 &tx,
                 title_tag,
                 filetype_tag,
@@ -450,12 +470,10 @@ impl Importer {
                 current_folder_id,
             )?;
 
-
-            if !genre_tag.is_empty() && !genre_id.is_none(){
+            if !genre_tag.is_empty() && !genre_id.is_none() {
                 added_genres.insert(genre_tag, genre_id.unwrap());
             }
             added_artists.insert(albumartist_tag, artist_id);
-
 
             if let Some(data) = cover_art {
                 if let Some(art_id) = cover_art_id {
@@ -463,7 +481,7 @@ impl Importer {
 
                     if let Some(ids) = album_art.get_mut(&album_id) {
                         ids.push(art_id);
-    
+
                         if let Some(album_art) = most_frequest_id(ids.clone()) {
                             database.update_album_art(&tx, album_id, album_art)?;
                         }
@@ -482,7 +500,6 @@ impl Importer {
 
             added_albums.insert(album_key, album_id);
             added_tracks.insert(song_key, track_id);
-
         }
 
         Ok(())
@@ -501,7 +518,7 @@ fn most_frequest_id(array: Vec<i64>) -> Option<i64> {
         let mut count = 0;
         for j in 0..array.len() {
             if array[i] == array[j] {
-                count+=1;
+                count += 1;
             }
         }
         if count > max_count {

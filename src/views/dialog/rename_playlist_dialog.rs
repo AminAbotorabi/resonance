@@ -7,17 +7,21 @@
 use adw::prelude::*;
 use adw::subclass::prelude::*;
 
-use gtk::{glib, glib::{clone, Sender}, CompositeTemplate};
+use gtk::{
+    glib,
+    glib::{clone, Sender},
+    CompositeTemplate,
+};
 use gtk_macros::send;
 
-use std::{cell::RefCell, rc::Rc};
 use log::error;
+use std::{cell::RefCell, rc::Rc};
 
-use crate::model::playlist::Playlist;
 use crate::database::DatabaseAction;
-use crate::util::database;
-use crate::toasts::add_error_toast;
 use crate::i18n::i18n;
+use crate::model::playlist::Playlist;
+use crate::toasts::add_error_toast;
+use crate::util::database;
 
 mod imp {
     use super::*;
@@ -105,7 +109,10 @@ impl RenamePlaylistDialog {
                 add_error_toast(i18n("Cannot rename playlist, no name entered."));
                 return;
             }
-            send!(imp.db_sender, DatabaseAction::RenamePlaylist((playlist.id(), playlist.title(), new_title)));
+            send!(
+                imp.db_sender,
+                DatabaseAction::RenamePlaylist((playlist.id(), playlist.title(), new_title))
+            );
         }
     }
 }

@@ -7,11 +7,15 @@
 use adw::prelude::*;
 use adw::subclass::prelude::*;
 
-use gtk::{glib, glib::{clone, Sender}, CompositeTemplate};
+use gtk::{
+    glib,
+    glib::{clone, Sender},
+    CompositeTemplate,
+};
 use gtk_macros::send;
 
-use std::cell::Cell;
 use log::error;
+use std::cell::Cell;
 
 use crate::database::DatabaseAction;
 use crate::util::database;
@@ -20,7 +24,7 @@ mod imp {
     use super::*;
     use glib::subclass::Signal;
     use once_cell::sync::Lazy;
-    
+
     #[derive(Debug, CompositeTemplate)]
     #[template(resource = "/io/github/nate_xyz/Resonance/delete_playlist_dialog.ui")]
     pub struct DeletePlaylistDialogPriv {
@@ -57,11 +61,7 @@ mod imp {
         }
 
         fn signals() -> &'static [Signal] {
-            static SIGNALS: Lazy<Vec<Signal>> = Lazy::new(|| {
-                vec![
-                    Signal::builder("done").build(),
-                ]
-            });
+            static SIGNALS: Lazy<Vec<Signal>> = Lazy::new(|| vec![Signal::builder("done").build()]);
 
             SIGNALS.as_ref()
         }

@@ -8,12 +8,12 @@ use adw::prelude::*;
 use gtk::{gio, glib, glib::clone, glib::Receiver, glib::Sender};
 use gtk_macros::send;
 
+use chrono::{self, Duration};
+use log::{debug, error};
 use std::cell::{Cell, RefCell};
 use std::error::Error;
-use std::rc::Rc;
 use std::fmt;
-use log::{debug, error};
-use chrono::{self, Duration};
+use std::rc::Rc;
 
 use discord_rich_presence::{activity, DiscordIpc, DiscordIpcClient};
 
@@ -46,14 +46,18 @@ pub struct ResonanceDiscord {
 impl fmt::Debug for ResonanceDiscord {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ResonanceDiscord")
-         .field("client", &self.client.borrow().as_ref().is_none())
-         .field("connected", &self.connected.get())
-         .finish()
+            .field("client", &self.client.borrow().as_ref().is_none())
+            .field("connected", &self.connected.get())
+            .finish()
     }
 }
 
 impl ResonanceDiscord {
-    pub fn new(receiver: Receiver<DiscordAction>, mb_sender: Sender<MusicBrainzAction>, mb_receiver: Receiver<(i64, Option<String>)>) -> Rc<Self> {
+    pub fn new(
+        receiver: Receiver<DiscordAction>,
+        mb_sender: Sender<MusicBrainzAction>,
+        mb_receiver: Receiver<(i64, Option<String>)>,
+    ) -> Rc<Self> {
         let res_discord = Self {
             client: RefCell::new(None),
             connected: Cell::new(false),
@@ -100,35 +104,25 @@ impl ResonanceDiscord {
 
     fn process_action(&self, action: DiscordAction) -> glib::Continue {
         match action {
-            DiscordAction::SetPlaying(track) => {
-                match self.set_playing(track) {
-                    Ok(_) => (),
-                    Err(e) => error!("Could not set track playing: {}", e),
-                }
+            DiscordAction::SetPlaying(track) => match self.set_playing(track) {
+                Ok(_) => (),
+                Err(e) => error!("Could not set track playing: {}", e),
             },
-            DiscordAction::Clear => {
-                match self.clear_activity() {
-                    Ok(_) => debug!("Cleared activity from discord client."),
-                    Err(e) => error!("Could not clear activity: {}", e),
-                }
+            DiscordAction::Clear => match self.clear_activity() {
+                Ok(_) => debug!("Cleared activity from discord client."),
+                Err(e) => error!("Could not clear activity: {}", e),
             },
-            DiscordAction::Seek(position) => {
-                match self.seek(position) {
-                    Ok(_) => debug!("Updated discord activity position"),
-                    Err(e) => error!("Unable to update discord activity position: {}", e),
-                }
+            DiscordAction::Seek(position) => match self.seek(position) {
+                Ok(_) => debug!("Updated discord activity position"),
+                Err(e) => error!("Unable to update discord activity position: {}", e),
             },
-            DiscordAction::Close => {
-                match self.close() {
-                    Ok(_) => debug!("Closed discord client connection"),
-                    Err(e) => error!("Unable to close discord client connection: {}", e),
-                }
+            DiscordAction::Close => match self.close() {
+                Ok(_) => debug!("Closed discord client connection"),
+                Err(e) => error!("Unable to close discord client connection: {}", e),
             },
-            DiscordAction::Reconnect => {
-                match self.reconnect() {
-                    Ok(_) => debug!("Reconnected discord client connection"),
-                    Err(e) => error!("Unable to reconnect discord client connection: {}", e),
-                }
+            DiscordAction::Reconnect => match self.reconnect() {
+                Ok(_) => debug!("Reconnected discord client connection"),
+                Err(e) => error!("Unable to reconnect discord client connection: {}", e),
             },
             // _ => debug!("Received action {:?}", action),
         }
@@ -140,7 +134,8 @@ impl ResonanceDiscord {
         if self.connected.get() {
             if let Some(track) = self.current_track.borrow().as_ref() {
                 let track_duration = (track.duration() - position) as i64;
-                let timestamp = (chrono::offset::Utc::now() + Duration::seconds(track_duration)).timestamp_millis();
+                let timestamp = (chrono::offset::Utc::now() + Duration::seconds(track_duration))
+                    .timestamp_millis();
                 let time = discord_rich_presence::activity::Timestamps::new().end(timestamp);
                 self.update_activity(time)?;
             }
@@ -189,8 +184,6 @@ impl ResonanceDiscord {
         Ok(())
     }
 
-
-
     fn load_client(&self) -> Result<(), Box<dyn Error>> {
         let client = DiscordIpcClient::new("1089186365738066031")?;
         self.client.replace(Some(client));
@@ -210,7 +203,7 @@ impl ResonanceDiscord {
 
     fn set_playing(&self, track: Rc<Track>) -> Result<(), Box<dyn Error>> {
         if !self.connected.get() {
-            return Ok(())
+            return Ok(());
         }
         let now = chrono::offset::Utc::now();
         self.current_track.replace(Some(track.clone()));
@@ -219,7 +212,10 @@ impl ResonanceDiscord {
         let time = discord_rich_presence::activity::Timestamps::new().end(timestamp);
         self.now.replace(Some(now));
         self.update_activity(time)?;
-        send!(self.mb_sender, MusicBrainzAction::FindRelease((false, track.clone())));    
+        send!(
+            self.mb_sender,
+            MusicBrainzAction::FindRelease((false, track.clone()))
+        );
         Ok(())
     }
 
@@ -228,8 +224,11 @@ impl ResonanceDiscord {
         glib::Continue(true)
     }
 
-
-    fn set_playing_track(&self, album_id: i64, art_url: Option<String>) -> Result<(), Box<dyn Error>> {
+    fn set_playing_track(
+        &self,
+        album_id: i64,
+        art_url: Option<String>,
+    ) -> Result<(), Box<dyn Error>> {
         if !self.connected.get() {
             self.connect()?;
         }
@@ -243,8 +242,7 @@ impl ResonanceDiscord {
                     chrono::offset::Utc::now()
                 };
 
-                let timestamp = (now + Duration::seconds(track_duration))
-                .timestamp_millis();
+                let timestamp = (now + Duration::seconds(track_duration)).timestamp_millis();
                 let time = discord_rich_presence::activity::Timestamps::new().end(timestamp);
                 self.current_art_url.replace(art_url.clone());
                 self.now.replace(Some(now));
@@ -254,8 +252,10 @@ impl ResonanceDiscord {
         Ok(())
     }
 
-
-    fn update_activity(&self, time_stamps: discord_rich_presence::activity::Timestamps) -> Result<(), Box<dyn Error>> {
+    fn update_activity(
+        &self,
+        time_stamps: discord_rich_presence::activity::Timestamps,
+    ) -> Result<(), Box<dyn Error>> {
         if self.connected.get() {
             if let Some(client) = self.client.borrow_mut().as_mut() {
                 if let Some(track) = self.current_track.borrow().as_ref() {
@@ -265,16 +265,14 @@ impl ResonanceDiscord {
                     let album_and_artist = format!("{} - {}", album_name, artist_name);
                     if let Some(art_url) = self.current_art_url.borrow().as_ref() {
                         let activity = activity::Activity::new()
-                        .details(&track_name)
-                        .state(&album_and_artist)
-                        .assets(
-                            activity::Assets::new().large_image(art_url.as_str()),
-                        )
-                        .timestamps(time_stamps)
-                        .buttons(vec![activity::Button::new(
-                            "Resonance",
-                            "https://github.com/nate-xyz/resonance",
-                        )]);
+                            .details(&track_name)
+                            .state(&album_and_artist)
+                            .assets(activity::Assets::new().large_image(art_url.as_str()))
+                            .timestamps(time_stamps)
+                            .buttons(vec![activity::Button::new(
+                                "Resonance",
+                                "https://github.com/nate-xyz/resonance",
+                            )]);
                         client.set_activity(activity)?;
                     } else {
                         let activity = activity::Activity::new()
@@ -297,5 +295,4 @@ impl ResonanceDiscord {
         }
         Ok(())
     }
-
 }

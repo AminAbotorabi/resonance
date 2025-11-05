@@ -3,7 +3,7 @@
  * Copyright 2023 nate-xyz
  *
  * Thanks to 2022 John Toohey <john_t@mailo.com>
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
@@ -58,21 +58,20 @@ impl Default for SearchMethod {
 mod imp {
     use super::*;
 
-    use std::cell::RefCell;
     use std::cell::Cell;
+    use std::cell::RefCell;
 
     use fuzzy_matcher::{skim::SkimMatcherV2, FuzzyMatcher};
     use gtk::glib::{self, ParamSpec, ParamSpecString, Value};
     use once_cell::sync::Lazy;
 
     use crate::model::album::Album;
-    use crate::model::track::Track;
-    use crate::model::playlist::Playlist;
     use crate::model::artist::Artist;
     use crate::model::genre::Genre;
-    use crate::views::pages::queue::track_item::TrackItem;
+    use crate::model::playlist::Playlist;
+    use crate::model::track::Track;
     use crate::views::pages::playlists::track_item::PlaylistDetailTrackItem;
-
+    use crate::views::pages::queue::track_item::TrackItem;
 
     #[derive(Default)]
     pub struct FuzzyFilter {
@@ -127,7 +126,7 @@ mod imp {
                         SearchMethod::Genre => album.genre(),
                         SearchMethod::ReleaseDate => album.date(),
                     }
-                },
+                }
                 SearchSortObject::Track => {
                     let track = search_obj.downcast_ref::<Track>().unwrap();
                     match self.method.get() {
@@ -138,28 +137,29 @@ mod imp {
                         SearchMethod::Genre => track.genre(),
                         SearchMethod::ReleaseDate => track.date(),
                     }
-                },
+                }
                 SearchSortObject::QueueTrack => {
                     let track = search_obj.downcast_ref::<TrackItem>().unwrap();
                     track.search_string()
-                },
+                }
                 SearchSortObject::PlaylistTrack => {
-                    let track = search_obj.downcast_ref::<PlaylistDetailTrackItem>().unwrap();
+                    let track = search_obj
+                        .downcast_ref::<PlaylistDetailTrackItem>()
+                        .unwrap();
                     track.search_string()
-                },
+                }
                 SearchSortObject::Playlist => {
                     let playlist = search_obj.downcast_ref::<Playlist>().unwrap();
                     playlist.title()
-                },
+                }
                 SearchSortObject::Artist => {
                     let artist = search_obj.downcast_ref::<Artist>().unwrap();
                     artist.name()
-                },
+                }
                 SearchSortObject::Genre => {
                     let genre = search_obj.downcast_ref::<Genre>().unwrap();
                     genre.name()
-                },
-
+                }
             };
 
             if let Some(search) = self.search.borrow().as_ref() {

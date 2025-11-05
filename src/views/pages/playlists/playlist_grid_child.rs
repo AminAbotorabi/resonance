@@ -7,27 +7,25 @@
 use adw::prelude::*;
 use adw::subclass::prelude::*;
 
-use gtk::{ glib, glib::clone, CompositeTemplate};
+use gtk::{glib, glib::clone, CompositeTemplate};
 
-use std::{cell::{Cell, RefCell}, rc::Rc};
 use log::debug;
-
-use crate::model::playlist::Playlist;
-use crate::views::art::{
-    grid_art::GridArt,
-    placeholder_art::PlaceHolderArt,
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
 };
+
+use crate::i18n::i18n_k;
+use crate::model::playlist::Playlist;
 use crate::sort::SortMethod;
 use crate::util::{model, player, seconds_to_string_longform};
-use crate::i18n::i18n_k;
+use crate::views::art::{grid_art::GridArt, placeholder_art::PlaceHolderArt};
 
 mod imp {
 
     use super::*;
     use glib::subclass::Signal;
-    use glib::{
-        Value, ParamSpec, ParamSpecEnum,
-    };
+    use glib::{ParamSpec, ParamSpecEnum, Value};
     use once_cell::sync::Lazy;
 
     #[derive(Debug, Default, CompositeTemplate)]
@@ -101,24 +99,21 @@ mod imp {
 
         fn properties() -> &'static [ParamSpec] {
             static PROPERTIES: Lazy<Vec<ParamSpec>> =
-                Lazy::new(|| vec![
-                    ParamSpecEnum::builder::<SortMethod>("sort-method").build(),
-                    ]
-                );
+                Lazy::new(|| vec![ParamSpecEnum::builder::<SortMethod>("sort-method").build()]);
             PROPERTIES.as_ref()
         }
-    
+
         fn set_property(&self, _id: usize, value: &Value, pspec: &ParamSpec) {
             match pspec.name() {
                 "sort-method" => {
                     let sort_method = value.get().expect("The value needs to be of type `enum`.");
                     self.sort_method.replace(sort_method);
                     self.obj().update_sort_ui();
-                },
+                }
                 _ => unimplemented!(),
             }
         }
-    
+
         fn property(&self, _id: usize, pspec: &ParamSpec) -> Value {
             match pspec.name() {
                 "sort-method" => self.sort_method.get().to_value(),
@@ -128,11 +123,9 @@ mod imp {
 
         fn signals() -> &'static [Signal] {
             static SIGNALS: Lazy<Vec<Signal>> = Lazy::new(|| {
-                vec![
-                    Signal::builder("clicked")
-                        .param_types([<i64>::static_type()])
-                        .build()
-                    ]
+                vec![Signal::builder("clicked")
+                    .param_types([<i64>::static_type()])
+                    .build()]
             });
 
             SIGNALS.as_ref()
@@ -157,7 +150,7 @@ impl Default for PlaylistGridChild {
 
 impl PlaylistGridChild {
     pub fn new() -> PlaylistGridChild {
-         Self::default()
+        Self::default()
     }
 
     pub fn initialize(&self) {
@@ -165,26 +158,25 @@ impl PlaylistGridChild {
 
         imp.popover.set_parent(self);
 
-        imp.main_button.connect_clicked(
-            clone!(@strong self as this => move |_button| {
+        imp.main_button
+            .connect_clicked(clone!(@strong self as this => move |_button| {
                 let id = this.imp().playlist.borrow().as_ref().unwrap().id().clone();
                 this.emit_by_name::<()>("clicked", &[&id]);
-            })
-        );
+            }));
 
         imp.play_button.connect_clicked(
             clone!(@strong self as this => @default-panic, move |_button| {
                 let playlist = this.playlist();
                 let tracks = playlist.tracks();
                 player().clear_play_album(tracks, Some(playlist.title()));
-            })
+            }),
         );
 
         imp.add_button.connect_clicked(
             clone!(@strong self as this => @default-panic, move |_button| {
                 let tracks = this.playlist().tracks();
                 player().add_album(tracks);
-            })
+            }),
         );
 
         let ctrl = gtk::EventControllerMotion::new();
@@ -219,31 +211,34 @@ impl PlaylistGridChild {
         self.update_view();
     }
 
-    fn playlist(&self ) -> Rc<Playlist> {
+    fn playlist(&self) -> Rc<Playlist> {
         self.imp().playlist.borrow().as_ref().unwrap().clone()
     }
-
 
     pub fn update_view(&self) {
         let imp = self.imp();
         match imp.playlist.borrow().as_ref() {
             Some(playlist) => {
                 imp.main_button.set_tooltip_text(Some(&playlist.title()));
-                
+
                 imp.title_label.set_label(&playlist.title());
-                imp.modify_time_label.set_label(&format!("{}", playlist.modify_time()));
-                imp.track_count_label.set_label(&i18n_k("{number_of_tracks} tracks", &[("number_of_tracks", &format!("{}", playlist.n_tracks()))]));
-                imp.duration_label.set_label(&seconds_to_string_longform(playlist.duration()));
+                imp.modify_time_label
+                    .set_label(&format!("{}", playlist.modify_time()));
+                imp.track_count_label.set_label(&i18n_k(
+                    "{number_of_tracks} tracks",
+                    &[("number_of_tracks", &format!("{}", playlist.n_tracks()))],
+                ));
+                imp.duration_label
+                    .set_label(&seconds_to_string_longform(playlist.duration()));
 
-
-                let cover_art_ids= playlist.cover_art_ids();
+                let cover_art_ids = playlist.cover_art_ids();
                 if cover_art_ids.len() > 0 {
                     match self.load_image(cover_art_ids) {
                         Ok(art) => {
                             imp.art_bin.set_child(Some(&art));
                             imp.art.replace(Some(art));
                             imp.placeholder_art.replace(None);
-                        },
+                        }
                         Err(_) => {
                             let art = PlaceHolderArt::new(playlist.title(), "".to_string(), 200);
                             imp.art_bin.set_child(Some(&art));
@@ -293,7 +288,6 @@ impl PlaylistGridChild {
         return Ok(art);
     }
 
-
     fn update_sort_ui(&self) {
         let imp = self.imp();
         imp.info_box.show();
@@ -303,25 +297,25 @@ impl PlaylistGridChild {
                 imp.modify_time_label.show();
                 imp.track_count_label.hide();
                 imp.duration_label.hide();
-            },
+            }
             SortMethod::Playlist => {
                 imp.title_label.show();
                 imp.modify_time_label.hide();
                 imp.track_count_label.hide();
                 imp.duration_label.hide();
-            },
+            }
             SortMethod::Duration => {
                 imp.title_label.show();
                 imp.modify_time_label.hide();
                 imp.track_count_label.hide();
                 imp.duration_label.show();
-            },
+            }
             SortMethod::TrackCount => {
                 imp.title_label.show();
                 imp.modify_time_label.hide();
                 imp.track_count_label.show();
                 imp.duration_label.hide();
-            },
+            }
             _ => (),
         }
     }

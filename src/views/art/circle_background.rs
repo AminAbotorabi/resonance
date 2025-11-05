@@ -5,9 +5,9 @@
  */
 
 use gtk::prelude::*;
-use gtk::{subclass::prelude::*, gdk, glib, graphene, gsk};
+use gtk::{gdk, glib, graphene, gsk, subclass::prelude::*};
 
-use std::cell::{RefCell, Cell};
+use std::cell::{Cell, RefCell};
 
 mod imp {
     use super::*;
@@ -41,17 +41,14 @@ mod imp {
             let color = gdk::RGBA::parse(self.color.borrow().clone()).unwrap();
 
             let rect = graphene::Rect::new(0.0, 0.0, widget.width() as f32, widget.height() as f32);
-           
+
             let rounded_rect = gsk::RoundedRect::from_rect(rect, 90.0);
 
             snapshot.push_rounded_clip(&rounded_rect);
             snapshot.append_color(&color, &rect);
             snapshot.pop();
-
         }
     }
-
-    
 }
 
 glib::wrapper! {

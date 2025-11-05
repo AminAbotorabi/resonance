@@ -23,7 +23,7 @@ mod imp {
         pub size: Cell<i32>,
         pub error: Cell<bool>,
         pub pixbuf: RefCell<Option<gdk_pixbuf::Pixbuf>>,
-        pub texture: RefCell<Option<gdk::Texture>>
+        pub texture: RefCell<Option<gdk::Texture>>,
     }
 
     #[glib::object_subclass]
@@ -39,11 +39,8 @@ mod imp {
         }
 
         fn signals() -> &'static [Signal] {
-            static SIGNALS: Lazy<Vec<Signal>> = Lazy::new(|| {
-                vec![
-                    Signal::builder("populated").build(),
-                ]
-            });
+            static SIGNALS: Lazy<Vec<Signal>> =
+                Lazy::new(|| vec![Signal::builder("populated").build()]);
 
             SIGNALS.as_ref()
         }
@@ -56,13 +53,13 @@ mod imp {
 
         fn snapshot(&self, snapshot: &gtk::Snapshot) {
             if let Some(texture) = self.texture.borrow_mut().as_ref() {
-                let rect = graphene::Rect::new(0.0, 0.0, texture.width() as f32, texture.height() as f32);
+                let rect =
+                    graphene::Rect::new(0.0, 0.0, texture.width() as f32, texture.height() as f32);
                 let rounded_rect = gsk::RoundedRect::from_rect(rect, 10.0);
 
                 snapshot.push_rounded_clip(&rounded_rect);
                 snapshot.append_texture(texture, &rect);
                 snapshot.pop();
-
             }
         }
     }
@@ -77,14 +74,18 @@ glib::wrapper! {
 
 impl RoundedAlbumArt {
     pub fn new(size: i32) -> RoundedAlbumArt {
-        let album_art: RoundedAlbumArt =  glib::Object::builder::<RoundedAlbumArt>().build();
+        let album_art: RoundedAlbumArt = glib::Object::builder::<RoundedAlbumArt>().build();
         album_art.imp().size.set(size);
         album_art
     }
 
     pub fn load(&self, pixbuf: Rc<gdk_pixbuf::Pixbuf>) {
         let imp = self.imp();
-        let new_pixbuf = match pixbuf.scale_simple(imp.size.get(), imp.size.get(), gdk_pixbuf::InterpType::Bilinear) {
+        let new_pixbuf = match pixbuf.scale_simple(
+            imp.size.get(),
+            imp.size.get(),
+            gdk_pixbuf::InterpType::Bilinear,
+        ) {
             Some(pixbuf) => pixbuf,
             None => {
                 return;
@@ -101,12 +102,11 @@ impl RoundedAlbumArt {
                 imp.texture.replace(Some(texture));
                 imp.pixbuf.replace(Some(pixbuf));
                 imp.error.set(false);
-            },
+            }
             None => {
                 imp.error.set(true);
             }
         }
         self.emit_by_name::<()>("populated", &[]);
     }
-
 }

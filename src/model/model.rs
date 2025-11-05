@@ -7,23 +7,23 @@
 use adw::subclass::prelude::*;
 use gtk::{gio, glib, prelude::*};
 
+use log::{debug, error};
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::rc::Rc;
-use std::fmt;
 use std::error::Error;
-use log::{debug, error};
+use std::fmt;
+use std::rc::Rc;
 
 use crate::database::Database;
 use crate::util;
 
 use super::album::Album;
 use super::artist::Artist;
+use super::artist_image::ArtistImage;
 use super::cover_art::CoverArt;
 use super::genre::Genre;
-use super::track::Track;
 use super::playlist::Playlist;
-use super::artist_image::ArtistImage;
+use super::track::Track;
 
 #[derive(Debug)]
 struct ModelError(String);
@@ -68,7 +68,7 @@ mod imp {
         pub playlists: RefCell<Option<HashMap<i64, Rc<Playlist>>>>,
         pub artist_images: RefCell<Option<HashMap<i64, Rc<ArtistImage>>>>,
     }
-    
+
     #[glib::object_subclass]
     impl ObjectSubclass for ModelPriv {
         const NAME: &'static str = "Model";
@@ -88,7 +88,6 @@ mod imp {
                 artist_images: RefCell::new(None),
             }
         }
-
     }
 
     impl ObjectImpl for ModelPriv {
@@ -106,10 +105,12 @@ mod imp {
                     Signal::builder("refresh-tracks").build(),
                     Signal::builder("refresh-playlists").build(),
                     Signal::builder("refresh-plays").build(),
-                    Signal::builder("refresh-playlist").param_types([<u64>::static_type()]).build(),
+                    Signal::builder("refresh-playlist")
+                        .param_types([<u64>::static_type()])
+                        .build(),
                 ]
             });
-            
+
             SIGNALS.as_ref()
         }
     }
@@ -133,7 +134,7 @@ impl Model {
             Ok(_) => self.emit_by_name::<()>("populated", &[]),
             Err(e) => {
                 error!("Unable to populate model: {}", e);
-            },
+            }
         }
     }
 
@@ -148,13 +149,12 @@ impl Model {
         imp.artist_images.replace(Some(HashMap::new()));
     }
 
-
     fn populate(&self) -> Result<(), Box<dyn Error>> {
         match self.populate_art() {
             Ok(_) => (),
             Err(e) => error!("Unable to populate art: {}", e),
         }
-        
+
         match self.populate_artists_images() {
             Ok(_) => (),
             Err(e) => error!("Unable to populate artist image: {}", e),
@@ -164,12 +164,12 @@ impl Model {
             Ok(_) => (),
             Err(e) => error!("Unable to populate albums: {}", e),
         }
-        
+
         match self.populate_tracks() {
             Ok(_) => (),
             Err(e) => error!("Unable to populate tracks: {}", e),
         }
-        
+
         self.emit_by_name::<()>("refresh-tracks", &[]);
 
         match self.populate_genres() {
@@ -177,7 +177,7 @@ impl Model {
             Err(e) => error!("Unable to populate genres: {}", e),
         }
         self.emit_by_name::<()>("refresh-genres", &[]);
-        
+
         match self.populate_artists() {
             Ok(_) => (),
             Err(e) => error!("Unable to populate artists: {}", e),
@@ -185,7 +185,7 @@ impl Model {
         self.emit_by_name::<()>("refresh-artists", &[]);
 
         self.emit_by_name::<()>("refresh-albums", &[]);
-    
+
         match self.populate_playlists() {
             Ok(_) => (),
             Err(e) => error!("Unable to populate playlists: {}", e),
@@ -195,10 +195,9 @@ impl Model {
         Ok(())
     }
 
-
     fn populate_art(&self) -> Result<(), Box<dyn Error>> {
         let imp = self.imp();
-        
+
         debug!("populate art");
         let list = self.database().query_art()?;
         if list.is_empty() {
@@ -244,7 +243,7 @@ impl Model {
         let mut genre_map = HashMap::new();
         for (id, name, albums_optional) in list {
             let genre = Rc::new(Genre::new(name.clone(), id.clone()));
-            
+
             if let Some(albums) = albums_optional {
                 for album_id in albums {
                     if let Ok(album) = self.album(album_id) {
@@ -285,12 +284,10 @@ impl Model {
 
             artist_map.insert(id, artist);
         }
-        
+
         imp.artists.replace(Some(artist_map));
         Ok(())
     }
-
-    
 
     fn populate_albums(&self) -> Result<(), Box<dyn Error>> {
         let imp = self.imp();
@@ -301,8 +298,7 @@ impl Model {
             return Err(Box::new(ModelError("Album Query Empty".into())));
         }
         let mut album_map = HashMap::new();
-        for (id, title, album_artist, date, genre, cover_art_option, artist_id) in list
-        {
+        for (id, title, album_artist, date, genre, cover_art_option, artist_id) in list {
             let album = Rc::new(Album::new(id, title, album_artist, artist_id, date, genre));
             album.add_cover_art_id(cover_art_option);
             album_map.insert(id, album);
@@ -310,8 +306,6 @@ impl Model {
         imp.albums.replace(Some(album_map));
         Ok(())
     }
-
-   
 
     fn populate_tracks(&self) -> Result<(), Box<dyn Error>> {
         let imp = self.imp();
@@ -370,10 +364,10 @@ impl Model {
 
     fn populate_playlists(&self) -> Result<(), Box<dyn Error>> {
         let imp = self.imp();
-        
+
         debug!("populate playlists");
         let database = self.database();
-        
+
         let list = database.query_playlists()?;
         if list.is_empty() {
             imp.playlists.replace(Some(HashMap::new()));
@@ -382,47 +376,60 @@ impl Model {
 
         let mut playlist_map = HashMap::new();
         for (id, title, description, creation_time, modify_time) in list {
-            let playlist = Rc::new(Playlist::new(id, title, description, creation_time, modify_time));
+            let playlist = Rc::new(Playlist::new(
+                id,
+                title,
+                description,
+                creation_time,
+                modify_time,
+            ));
 
             let list = match database.query_playlist_entries_by_playlist_id(id) {
                 Ok(list) => list,
                 Err(e) => {
                     error!("Error retrieving entries for playlist {}: {}", id, e);
                     continue;
-                },
+                }
             };
-            
+
             if list.is_empty() {
                 debug!("playlist entry list empty for playlist {}", id);
                 continue;
             }
 
             for (id, playlist_position, track_id) in list {
-                    let track = self.track(track_id)?;
-                    playlist.add_track(id, playlist_position, track);
+                let track = self.track(track_id)?;
+                playlist.add_track(id, playlist_position, track);
             }
 
             playlist_map.insert(id, playlist);
         }
-        
+
         imp.playlists.replace(Some(playlist_map));
         Ok(())
     }
-    
+
     fn populate_playlist_by_id(&self, id: u64) -> Result<(), Box<dyn Error>> {
         debug!("populate playlist {}", id);
         let database = self.database();
-        let (playlist_id, title, description, creation_time, modify_time) = database.query_playlist_by_id(id)?;
-        let playlist = Rc::new(Playlist::new(playlist_id, title, description, creation_time, modify_time));
-        
+        let (playlist_id, title, description, creation_time, modify_time) =
+            database.query_playlist_by_id(id)?;
+        let playlist = Rc::new(Playlist::new(
+            playlist_id,
+            title,
+            description,
+            creation_time,
+            modify_time,
+        ));
+
         let list = match database.query_playlist_entries_by_playlist_id(playlist_id) {
             Ok(list) => list,
             Err(e) => {
                 error!("Error retrieving entries for playlist {}: {}", id, e);
-                return Err(Box::new(ModelError("Playlist Entries Query Empty".into())))
-            },
+                return Err(Box::new(ModelError("Playlist Entries Query Empty".into())));
+            }
         };
-        
+
         if !list.is_empty() {
             for (id, playlist_position, track_id) in list {
                 let track = self.track(track_id)?;
@@ -430,20 +437,24 @@ impl Model {
             }
         }
 
-        match self.imp().playlists.borrow_mut().as_mut().unwrap().entry(playlist_id) {
+        match self
+            .imp()
+            .playlists
+            .borrow_mut()
+            .as_mut()
+            .unwrap()
+            .entry(playlist_id)
+        {
             std::collections::hash_map::Entry::Occupied(o) => {
                 *o.into_mut() = playlist;
-
-            },
+            }
             std::collections::hash_map::Entry::Vacant(v) => {
                 v.insert(playlist);
-            },
+            }
         }
 
         Ok(())
     }
-
-
 
     // fn populate_artists_by_id(&self, id: u64) -> Result<(), Box<dyn Error>> {
     //     debug!("populate artist {}", id);
@@ -463,8 +474,16 @@ impl Model {
     // }
     fn populate_albums_by_id(&self, id: u64) -> Result<(), Box<dyn Error>> {
         debug!("populate album {}", id);
-        let (album_id, title, album_artist, date, genre, cover_art_option, artist_id, genre_option) = self.database().query_album_by_id(id)?;
-        let album = Rc::new(Album::new(album_id, title, album_artist, artist_id, date, genre));
+        let (album_id, title, album_artist, date, genre, cover_art_option, artist_id, genre_option) =
+            self.database().query_album_by_id(id)?;
+        let album = Rc::new(Album::new(
+            album_id,
+            title,
+            album_artist,
+            artist_id,
+            date,
+            genre,
+        ));
         album.add_cover_art_id(cover_art_option);
         if !genre_option.is_none() {
             let genre_id = genre_option.unwrap();
@@ -477,14 +496,20 @@ impl Model {
             album.add_artist(artist_id);
             artist.add_album(album.clone());
         }
-        match self.imp().albums.borrow_mut().as_mut().unwrap().entry(album_id) {
+        match self
+            .imp()
+            .albums
+            .borrow_mut()
+            .as_mut()
+            .unwrap()
+            .entry(album_id)
+        {
             std::collections::hash_map::Entry::Occupied(o) => {
                 *o.into_mut() = album;
-
-            },
+            }
             std::collections::hash_map::Entry::Vacant(v) => {
                 v.insert(album);
-            },
+            }
         }
         Ok(())
     }
@@ -594,11 +619,9 @@ impl Model {
     pub fn process_action(&self, action: ModelAction) -> glib::Continue {
         match action {
             ModelAction::PopulateAll => self.populate_all(),
-            ModelAction::PopulateArts => {
-                match self.populate_art() {
-                    Ok(_) => (),
-                    Err(e) => error!("Unable to populate art: {}", e),
-                }
+            ModelAction::PopulateArts => match self.populate_art() {
+                Ok(_) => (),
+                Err(e) => error!("Unable to populate art: {}", e),
             },
             ModelAction::PopulateTracks => {
                 match self.populate_tracks() {
@@ -606,35 +629,35 @@ impl Model {
                     Err(e) => error!("Unable to populate tracks: {}", e),
                 }
                 self.emit_by_name::<()>("refresh-tracks", &[]);
-            },
+            }
             ModelAction::PopulateAlbums => {
                 match self.populate_albums() {
                     Ok(_) => (),
                     Err(e) => error!("Unable to populate albums: {}", e),
                 }
                 self.emit_by_name::<()>("refresh-albums", &[]);
-            },
+            }
             ModelAction::PopulatePlaylists => {
                 match self.populate_playlists() {
                     Ok(_) => (),
                     Err(e) => error!("Unable to populate playlists: {}", e),
                 }
                 self.emit_by_name::<()>("refresh-playlists", &[]);
-            },
+            }
             ModelAction::PopulatePlaylist(id) => {
                 match self.populate_playlist_by_id(id) {
                     Ok(_) => (),
                     Err(e) => error!("Unable to populate playlist: {}", e),
                 }
                 self.emit_by_name::<()>("refresh-playlist", &[&id]);
-            },
+            }
             ModelAction::PopulateArtist(id) => {
                 match self.populate_albums_by_id(id) {
                     Ok(_) => (),
                     Err(e) => error!("Unable to populate artist: {}", e),
                 }
                 //self.emit_by_name::<()>("refresh-artist", &[&id]);
-            },
+            }
             ModelAction::PopulateArtists => {
                 match self.populate_artists_images() {
                     Ok(_) => (),
@@ -645,10 +668,9 @@ impl Model {
                     Err(e) => error!("Unable to populate artists: {}", e),
                 }
                 self.emit_by_name::<()>("refresh-artists", &[]);
-            },
+            }
             _ => debug!("Received action {:?}", action),
         }
         glib::Continue(true)
     }
-
 }

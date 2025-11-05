@@ -19,8 +19,7 @@ mod imp {
     use super::*;
 
     #[derive(Debug, Default)]
-    pub struct PlaceHolderArt  {
-    }
+    pub struct PlaceHolderArt {}
 
     #[glib::object_subclass]
     impl ObjectSubclass for PlaceHolderArt {
@@ -37,7 +36,6 @@ mod imp {
 
     impl WidgetImpl for PlaceHolderArt {}
     impl BinImpl for PlaceHolderArt {}
-
 }
 
 glib::wrapper! {
@@ -47,7 +45,7 @@ glib::wrapper! {
 
 impl PlaceHolderArt {
     pub fn new(album: String, artist: String, size: i32) -> PlaceHolderArt {
-        let object: PlaceHolderArt= glib::Object::builder::<PlaceHolderArt>().build();
+        let object: PlaceHolderArt = glib::Object::builder::<PlaceHolderArt>().build();
         object.construct(album, artist, size);
         object
     }
@@ -55,7 +53,7 @@ impl PlaceHolderArt {
     fn construct(&self, album: String, artist: String, size: i32) {
         let bg = RoundedBackground::new("rgba(0, 0, 0, 0.7)", size);
         let box_ = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        
+
         box_.set_hexpand(true);
         box_.set_vexpand(true);
         box_.set_valign(gtk::Align::Center);
@@ -67,7 +65,7 @@ impl PlaceHolderArt {
         album_label.set_halign(gtk::Align::Center);
         album_label.set_justify(gtk::Justification::Center);
         album_label.set_wrap(true);
- 
+
         let album_str = album.as_str();
         let width = UnicodeWidthStr::width(album_str);
         let text = if width >= 91 {
@@ -76,8 +74,11 @@ impl PlaceHolderArt {
             ellipsized
         } else {
             album
-        };        
-        album_label.set_label(&format!("<span style=\"oblique\" weight=\"bold\" size=\"large\">{}</span>", html_escape::encode_text_minimal(&text)));
+        };
+        album_label.set_label(&format!(
+            "<span style=\"oblique\" weight=\"bold\" size=\"large\">{}</span>",
+            html_escape::encode_text_minimal(&text)
+        ));
 
         let artist_label = gtk::Label::new(None);
         artist_label.set_use_markup(true);
@@ -95,8 +96,10 @@ impl PlaceHolderArt {
         } else {
             artist
         };
-        artist_label.set_label(&format!("<span weight=\"book\" size=\"medium\">{}</span>", html_escape::encode_text_minimal(&text)));
-
+        artist_label.set_label(&format!(
+            "<span weight=\"book\" size=\"medium\">{}</span>",
+            html_escape::encode_text_minimal(&text)
+        ));
 
         box_.append(&album_label);
         box_.append(&artist_label);
@@ -108,7 +111,7 @@ impl PlaceHolderArt {
 
         self.set_overflow(gtk::Overflow::Hidden);
 
-        let overlay = gtk::Overlay::new(); 
+        let overlay = gtk::Overlay::new();
 
         overlay.add_overlay(&box_);
         overlay.set_child(Some(&bg));

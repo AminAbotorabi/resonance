@@ -4,42 +4,34 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-use adw::subclass::prelude::*;
 use adw::prelude::*;
+use adw::subclass::prelude::*;
 
 use gtk::{gio, gio::ListStore, glib, glib::clone, CompositeTemplate};
-use std::{cell::RefCell, cell::Cell, rc::Rc};
-use std::time::Duration;
 use log::{debug, error};
+use std::time::Duration;
+use std::{cell::Cell, cell::RefCell, rc::Rc};
 
+use crate::i18n::{i18n, i18n_k};
+use crate::model::{playlist::Playlist, playlist_entry::PlaylistEntry};
+use crate::search::{FuzzyFilter, SearchSortObject};
+use crate::util::{model, player, seconds_to_string_longform, settings_manager, win};
+use crate::views::art::{grid_art::GridArt, placeholder_art::PlaceHolderArt};
 use crate::views::dialog::{
+    confirm_rename_playlist_dialog::ConfirmRenamePlaylistDialog,
     delete_playlist_dialog::DeletePlaylistDialog,
     duplicate_playlist_dialog::DuplicatePlaylistDialog,
-    confirm_rename_playlist_dialog::ConfirmRenamePlaylistDialog,
 };
-use crate::model::{
-    playlist::Playlist,
-    playlist_entry::PlaylistEntry,
-};
-use crate::views::art::{
-    grid_art::GridArt,
-    placeholder_art::PlaceHolderArt,
-};
-use crate::util::{model, player, seconds_to_string_longform, win, settings_manager};
-use crate::search::{FuzzyFilter, SearchSortObject};
-use crate::i18n::{i18n, i18n_k};
 
-use super::track_item::PlaylistDetailTrackItem;
 use super::playlist_detail_row::PlaylistDetailRow;
+use super::track_item::PlaylistDetailTrackItem;
 
 mod imp {
     use super::*;
     use glib::subclass::Signal;
-    use glib::{
-        Value, ParamSpec, ParamSpecBoolean
-    };
+    use glib::{ParamSpec, ParamSpecBoolean, Value};
     use once_cell::sync::Lazy;
-    
+
     #[derive(Debug, Default, CompositeTemplate)]
     #[template(resource = "/io/github/nate_xyz/Resonance/playlist_detail_page.ui")]
     pub struct PlaylistDetailPagePriv {
@@ -63,7 +55,7 @@ mod imp {
 
         #[template_child(id = "title_label")]
         pub title_label: TemplateChild<gtk::Label>,
-        
+
         #[template_child(id = "desc_label")]
         pub desc_label: TemplateChild<gtk::Label>,
 
@@ -129,7 +121,7 @@ mod imp {
 
         pub art: RefCell<Option<GridArt>>,
         pub placeholder_art: RefCell<Option<PlaceHolderArt>>,
-        
+
         pub current_title: RefCell<String>,
         pub current_description: RefCell<String>,
 
@@ -166,11 +158,15 @@ mod imp {
         }
 
         fn properties() -> &'static [ParamSpec] {
-            static PROPERTIES: Lazy<Vec<ParamSpec>> =
-                Lazy::new(|| vec![ParamSpecBoolean::builder("edit-mode").default_value(false).explicit_notify().build()]);
+            static PROPERTIES: Lazy<Vec<ParamSpec>> = Lazy::new(|| {
+                vec![ParamSpecBoolean::builder("edit-mode")
+                    .default_value(false)
+                    .explicit_notify()
+                    .build()]
+            });
             PROPERTIES.as_ref()
         }
-    
+
         fn set_property(&self, _id: usize, value: &Value, pspec: &ParamSpec) {
             match pspec.name() {
                 "edit-mode" => {
@@ -180,7 +176,7 @@ mod imp {
                 _ => unimplemented!(),
             }
         }
-    
+
         fn property(&self, _id: usize, pspec: &ParamSpec) -> Value {
             match pspec.name() {
                 "edit-mode" => self.edit_mode.get().to_value(),
@@ -189,15 +185,10 @@ mod imp {
         }
 
         fn signals() -> &'static [Signal] {
-            static SIGNALS: Lazy<Vec<Signal>> = Lazy::new(|| {
-                vec![
-                    Signal::builder("back").build(),
-                ]
-            });
+            static SIGNALS: Lazy<Vec<Signal>> = Lazy::new(|| vec![Signal::builder("back").build()]);
 
             SIGNALS.as_ref()
         }
-
     }
 
     impl WidgetImpl for PlaylistDetailPagePriv {}
@@ -210,10 +201,10 @@ glib::wrapper! {
     @extends gtk::Box, gtk::Widget;
 }
 
-
 impl PlaylistDetailPage {
     pub fn new() -> PlaylistDetailPage {
-        let playlist_detail: PlaylistDetailPage = glib::Object::builder::<PlaylistDetailPage>().build();
+        let playlist_detail: PlaylistDetailPage =
+            glib::Object::builder::<PlaylistDetailPage>().build();
         playlist_detail
     }
 
@@ -222,7 +213,8 @@ impl PlaylistDetailPage {
 
         let settings = settings_manager();
 
-        settings.bind("full-page-back-button", &*imp.back_button, "visible")
+        settings
+            .bind("full-page-back-button", &*imp.back_button, "visible")
             .flags(gio::SettingsBindFlags::GET)
             .build();
 
@@ -250,20 +242,17 @@ impl PlaylistDetailPage {
             }),
         );
 
-
         let list_item_factory = gtk::SignalListItemFactory::new();
-        list_item_factory.connect_setup(
-            clone!(@strong self as this => move |_, list_item| {
-                let list_item = list_item.downcast_ref::<gtk::ListItem>().unwrap();
-                let playlist_detail_row = PlaylistDetailRow::new();
+        list_item_factory.connect_setup(clone!(@strong self as this => move |_, list_item| {
+            let list_item = list_item.downcast_ref::<gtk::ListItem>().unwrap();
+            let playlist_detail_row = PlaylistDetailRow::new();
 
-                this.bind_property("edit-mode", &playlist_detail_row, "edit-mode")
-                    .flags(glib::BindingFlags::SYNC_CREATE)
-                    .build();
+            this.bind_property("edit-mode", &playlist_detail_row, "edit-mode")
+                .flags(glib::BindingFlags::SYNC_CREATE)
+                .build();
 
-                list_item.set_child(Some(&playlist_detail_row));
-            })
-        );
+            list_item.set_child(Some(&playlist_detail_row));
+        }));
 
         list_item_factory.connect_bind(
             clone!(@strong self as this => move |_, list_item| {
@@ -290,11 +279,10 @@ impl PlaylistDetailPage {
         let list_store = gio::ListStore::new(PlaylistDetailTrackItem::static_type());
         imp.list_store.replace(Some(Rc::new(list_store)));
 
-        imp.back_button.connect_clicked(
-            clone!(@strong self as this => move |_button| {
+        imp.back_button
+            .connect_clicked(clone!(@strong self as this => move |_button| {
                 this.emit_by_name::<()>("back", &[]);
-            })
-        );
+            }));
 
         let play_buttons = [&imp.play_button, &imp.second_play_button];
         for play in play_buttons {
@@ -365,7 +353,6 @@ impl PlaylistDetailPage {
             );
         }
 
-
         let duplicate_buttons = [&imp.duplicate_button];
         for duplicate in duplicate_buttons {
             duplicate.connect_clicked(
@@ -373,8 +360,8 @@ impl PlaylistDetailPage {
                     let dialog = DuplicatePlaylistDialog::new(this.playlist());
                     dialog.set_transient_for(Some(&win(this.upcast_ref())));
                     dialog.connect_local(
-                        "done", 
-                        false, 
+                        "done",
+                        false,
                         clone!(@strong this as that => move |_| {
                             that.set_edit_mode(false);
                             that.emit_by_name::<()>("back", &[]);
@@ -393,7 +380,7 @@ impl PlaylistDetailPage {
                     let dialog = DeletePlaylistDialog::new(this.playlist().id());
                     dialog.set_transient_for(Some(&win(this.upcast_ref())));
                     dialog.connect_local(
-                        "done", 
+                        "done",
                         false,
                         clone!(@strong this as that => move |_| {
                             that.set_edit_mode(false);
@@ -407,18 +394,14 @@ impl PlaylistDetailPage {
         }
 
         let ctrl = gtk::EventControllerMotion::new();
-        ctrl.connect_enter(
-            clone!(@strong self as this => move |_controller, _x, _y| {
-                let imp = this.imp();
-                imp.overlay_box.show();
-            })
-        );
-        ctrl.connect_leave(
-            clone!(@strong self as this => move |_controller| {
-                let imp = this.imp();
-                imp.overlay_box.hide();
-            })
-        );
+        ctrl.connect_enter(clone!(@strong self as this => move |_controller, _x, _y| {
+            let imp = this.imp();
+            imp.overlay_box.show();
+        }));
+        ctrl.connect_leave(clone!(@strong self as this => move |_controller| {
+            let imp = this.imp();
+            imp.overlay_box.hide();
+        }));
         imp.overlay.add_controller(ctrl);
 
         // let ctrl = gtk::GestureClick::new();
@@ -460,18 +443,18 @@ impl PlaylistDetailPage {
             }
         }
     }
-    
+
     pub fn update_view(&self) {
         let imp = self.imp();
-        
+
         debug!("playlist detail: update_view");
 
         if imp.second_button_box.get_visible() {
             imp.second_button_box.set_visible(false);
         }
-        
+
         match imp.playlist.borrow().as_ref() {
-            Some(playlist) => {                    
+            Some(playlist) => {
                 let list_store = self.list_store();
                 list_store.remove_all();
                 imp.list_view.set_model(None::<&gtk::SingleSelection>);
@@ -479,40 +462,37 @@ impl PlaylistDetailPage {
                 //let list_store = gio::ListStore::new(PlaylistDetailTrackItem::static_type());
 
                 for (_, entry) in playlist.entry_map() {
-                    
-                    let track_item = PlaylistDetailTrackItem::new(
-                        playlist.id(),
-                        entry.clone(), 
-                    );
+                    let track_item = PlaylistDetailTrackItem::new(playlist.id(), entry.clone());
                     list_store.append(&track_item);
                 }
 
                 let filter = FuzzyFilter::new(SearchSortObject::PlaylistTrack);
-                let filter_model = gtk::FilterListModel::new(None::<gio::ListStore>, None::<FuzzyFilter>);        
+                let filter_model =
+                    gtk::FilterListModel::new(None::<gio::ListStore>, None::<FuzzyFilter>);
                 filter_model.set_model(Some(&*list_store));
                 filter_model.set_filter(Some(&filter));
 
-                let sorter: gtk::Sorter =  {
+                let sorter: gtk::Sorter = {
                     gtk::CustomSorter::new(move |a, b| {
                         let a = a.downcast_ref::<PlaylistDetailTrackItem>().unwrap();
                         let b = b.downcast_ref::<PlaylistDetailTrackItem>().unwrap();
-                
+
                         let item1_key = a.position();
                         let item2_key = b.position();
-                    
+
                         if item1_key > item2_key {
                             gtk::Ordering::Larger
-                        } else if item1_key < item2_key  {
+                        } else if item1_key < item2_key {
                             gtk::Ordering::Smaller
                         } else {
                             gtk::Ordering::Equal
                         }
-                        
                     })
                     .upcast()
                 };
 
-                let sorter_model = gtk::SortListModel::new(None::<gio::ListStore>, None::<gtk::Sorter>);
+                let sorter_model =
+                    gtk::SortListModel::new(None::<gio::ListStore>, None::<gtk::Sorter>);
                 sorter_model.set_sorter(Some(&sorter));
                 sorter_model.set_model(Some(&filter_model));
 
@@ -530,7 +510,7 @@ impl PlaylistDetailPage {
                 // imp.search_entry.bind_property("text", &filter, "search")
                 //     .flags(glib::BindingFlags::SYNC_CREATE)
                 //     .build();
-    
+
                 imp.search_entry.connect_notify_local(
                     Some("text"),
                     clone!(@strong self as this => move |search_entry, _text| {
@@ -566,7 +546,6 @@ impl PlaylistDetailPage {
         }
     }
 
-
     fn construct_ui(&self, playlist: &Rc<Playlist>) {
         let imp = self.imp();
 
@@ -581,9 +560,6 @@ impl PlaylistDetailPage {
             imp.current_description.replace(playlist.description());
             imp.desc_label.set_text(playlist.description().as_str());
             imp.desc_label.show();
-            
-     
-
         } else {
             imp.desc_label.hide();
         }
@@ -592,22 +568,26 @@ impl PlaylistDetailPage {
         if n_tracks <= 1 {
             imp.track_amount_label.set_label(&i18n("1 track"));
         } else {
-            imp.track_amount_label.set_label(&i18n_k("{number_of_tracks} tracks", &[("number_of_tracks", &format!("{}", n_tracks))]));
+            imp.track_amount_label.set_label(&i18n_k(
+                "{number_of_tracks} tracks",
+                &[("number_of_tracks", &format!("{}", n_tracks))],
+            ));
         }
 
         let duration = playlist.duration();
         if duration > 0.0 {
-            imp.duration_label.set_label(&seconds_to_string_longform(duration));
+            imp.duration_label
+                .set_label(&seconds_to_string_longform(duration));
         }
 
-        let cover_art_ids= playlist.cover_art_ids();
+        let cover_art_ids = playlist.cover_art_ids();
         if cover_art_ids.len() > 0 {
             match self.load_image(cover_art_ids) {
                 Ok(art) => {
                     imp.art_bin.set_child(Some(&art));
                     imp.art.replace(Some(art));
                     imp.placeholder_art.replace(None);
-                },
+                }
                 Err(_) => {
                     let art = PlaceHolderArt::new(playlist.title(), "".to_string(), 500);
                     imp.art_bin.set_child(Some(&art));
@@ -624,7 +604,6 @@ impl PlaylistDetailPage {
 
         //imp.popover.set_menu_model(Some(playlist.menu_model()));
     }
-
 
     fn load_image(&self, cover_art_id: Vec<i64>) -> Result<GridArt, String> {
         let art = GridArt::new(500);
@@ -648,8 +627,6 @@ impl PlaylistDetailPage {
         return Ok(art);
     }
 
-
-
     fn set_edit_mode(&self, edit: bool) {
         let imp = self.imp();
         imp.edit_mode.set(edit);
@@ -657,12 +634,12 @@ impl PlaylistDetailPage {
         self.notify("edit-mode");
 
         if edit {
-
             imp.desc_label.hide();
             imp.adw_entry.set_text(self.playlist().title().as_str());
-            imp.desc_entry.set_text(self.playlist().description().as_str());
+            imp.desc_entry
+                .set_text(self.playlist().description().as_str());
             imp.desc_entry.show();
-            
+
             for label in [&imp.list_title_label] {
                 label.hide()
             }
@@ -674,8 +651,6 @@ impl PlaylistDetailPage {
             for b in [&imp.delete_button, &imp.duplicate_button] {
                 b.show();
             }
-
-
         } else {
             imp.desc_entry.hide();
             if !imp.current_description.borrow().is_empty() {
@@ -695,14 +670,12 @@ impl PlaylistDetailPage {
                 b.hide();
             }
         }
-
-
     }
 
     fn edit_button_mode(&self, mode: bool) {
         let imp = self.imp();
         let button: &gtk::Button = imp.edit_button.as_ref();
-   
+
         if !mode {
             for b in [button] {
                 b.remove_css_class("opaque");
@@ -714,7 +687,6 @@ impl PlaylistDetailPage {
             for i in [&imp.edit_icon] {
                 i.set_icon_name(Some("edit-symbolic"));
             }
-
         } else {
             for b in [button] {
                 b.remove_css_class("flat");
@@ -731,7 +703,8 @@ impl PlaylistDetailPage {
 
     pub fn on_toggle_search_button(&self) {
         let imp = self.imp();
-        imp.search_bar.set_search_mode(!imp.search_bar.is_search_mode());
+        imp.search_bar
+            .set_search_mode(!imp.search_bar.is_search_mode());
         if !imp.search_bar.is_search_mode() {
             imp.search_bar.grab_focus();
         }

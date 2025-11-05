@@ -7,17 +7,21 @@
 use adw::prelude::*;
 use adw::subclass::prelude::*;
 
-use gtk::{glib, glib::{clone, Sender}, CompositeTemplate};
+use gtk::{
+    glib,
+    glib::{clone, Sender},
+    CompositeTemplate,
+};
 use gtk_macros::send;
 
-use std::{rc::Rc, cell::RefCell, collections::HashMap};
 use log::error;
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crate::database::DatabaseAction;
-use crate::model::playlist::Playlist;
-use crate::util::{model, database};
-use crate::toasts::add_error_toast;
 use crate::i18n::i18n;
+use crate::model::playlist::Playlist;
+use crate::toasts::add_error_toast;
+use crate::util::{database, model};
 
 mod imp {
     use super::*;
@@ -98,20 +102,19 @@ impl AddToPlaylistDialog {
                     imp.list_box.append(&box_);
                     imp.row_map.borrow_mut().insert(box_, playlist);
                 }
-            },
+            }
             None => {
                 error!("No playlists to add to");
-            },
+            }
         }
 
         imp.list_box.set_activate_on_single_click(true);
-        imp.list_box.connect_row_activated(
-            clone!(@strong self as this => move |_list_box, row| {
+        imp.list_box
+            .connect_row_activated(clone!(@strong self as this => move |_list_box, row| {
                 let imp = this.imp();
                 let box_ = row.child().unwrap().downcast::<gtk::Box>().unwrap();
                 imp.selected_playlist.replace(Some(imp.row_map.borrow()[&box_].clone()));
-            }),
-        );
+            }));
 
         self.connect_response(
             None,
@@ -126,11 +129,20 @@ impl AddToPlaylistDialog {
         if response == "add" {
             if let Some(playlist) = imp.selected_playlist.borrow().as_ref() {
                 if let Some(track_ids) = imp.track_ids.borrow().as_ref() {
-                    send!(imp.db_sender, DatabaseAction::AddTracksToPlaylist((playlist.id(), playlist.title(), track_ids.clone())))
+                    send!(
+                        imp.db_sender,
+                        DatabaseAction::AddTracksToPlaylist((
+                            playlist.id(),
+                            playlist.title(),
+                            track_ids.clone()
+                        ))
+                    )
                 }
             } else {
                 error!("Unable to add tracks to playlist, no playlist selected");
-                add_error_toast(i18n("Unable to add tracks to playlist, no playlist selected"));
+                add_error_toast(i18n(
+                    "Unable to add tracks to playlist, no playlist selected",
+                ));
             }
         }
     }

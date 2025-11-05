@@ -4,22 +4,22 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-use gtk::prelude::*;
 use gtk::gio;
-use gtk::{gdk, glib, gdk_pixbuf::Pixbuf};
+use gtk::prelude::*;
+use gtk::{gdk, gdk_pixbuf::Pixbuf, glib};
 
 use std::rc::Rc;
 
 use color_thief::{get_palette, ColorFormat};
-use scraper::{Html, Selector};
 use reqwest::header::{HeaderMap, USER_AGENT};
+use scraper::{Html, Selector};
 
 use crate::views::art::rounded_album_art::RoundedAlbumArt;
 use crate::views::window::Window;
 
-use super::model::model::Model;
-use super::database::Database;
 use super::app::App;
+use super::database::Database;
+use super::model::model::Model;
 use super::player::player::Player;
 
 pub fn window() -> Option<Window> {
@@ -28,21 +28,21 @@ pub fn window() -> Option<Window> {
         .downcast::<gtk::Application>()
         .ok()?;
 
-    let win = app
-        .active_window()?
-        .downcast::<Window>()
-        .ok()?;
-    
+    let win = app.active_window()?.downcast::<Window>().ok()?;
+
     Some(win)
 }
 
 pub fn fetch_artist_image_discog(artist_name: &str) -> Option<(String, Vec<u8>)> {
-    let url = format!("https://www.discogs.com/search/?q={}&type=artist", urlencoding::encode(artist_name));
+    let url = format!(
+        "https://www.discogs.com/search/?q={}&type=artist",
+        urlencoding::encode(artist_name)
+    );
     let mut headers = HeaderMap::new();
     headers.insert(USER_AGENT, "Mozilla/5.0".parse().unwrap());
 
     let response = reqwest::blocking::Client::builder()
-    .default_headers(headers.clone())
+        .default_headers(headers.clone())
         .build()
         .unwrap()
         .get(&url)
@@ -56,7 +56,8 @@ pub fn fetch_artist_image_discog(artist_name: &str) -> Option<(String, Vec<u8>)>
     let card_selector = Selector::parse(".card").unwrap();
     let thumbnail_link_selector = Selector::parse(".thumbnail_link").unwrap();
 
-    let artist_link = document.select(&search_results_selector)
+    let artist_link = document
+        .select(&search_results_selector)
         .next()?
         .select(&card_selector)
         .next()?
@@ -82,7 +83,8 @@ pub fn fetch_artist_image_discog(artist_name: &str) -> Option<(String, Vec<u8>)>
     let view_images_selector = Selector::parse("#view_images").unwrap();
     let thumbnail_link_selector = Selector::parse(".thumbnail_link").unwrap();
 
-    let image_url = document.select(&view_images_selector)
+    let image_url = document
+        .select(&view_images_selector)
         .next()?
         .select(&thumbnail_link_selector)
         .next()?
@@ -91,12 +93,14 @@ pub fn fetch_artist_image_discog(artist_name: &str) -> Option<(String, Vec<u8>)>
         .value()
         .attr("src")?;
 
-    let img_bytes = reqwest::blocking::get(image_url).ok()?.bytes().ok()?.to_vec();
+    let img_bytes = reqwest::blocking::get(image_url)
+        .ok()?
+        .bytes()
+        .ok()?
+        .to_vec();
 
     Some((image_url.to_owned(), img_bytes))
 }
-
-
 
 pub fn load_cover_art_pixbuf(cover_art_id: i64, size: i32) -> Result<RoundedAlbumArt, String> {
     let cover_art = model().cover_art(cover_art_id)?;
@@ -113,7 +117,6 @@ pub fn settings_manager() -> gio::Settings {
     gio::Settings::new(app_id)
 }
 
-
 pub fn player() -> Rc<Player> {
     gio::Application::default()
         .expect("Failed to retrieve application singleton")
@@ -123,31 +126,30 @@ pub fn player() -> Rc<Player> {
         .clone()
 }
 
-pub fn model() -> Rc<Model>{
+pub fn model() -> Rc<Model> {
     gio::Application::default()
-    .expect("Failed to retrieve application singleton")
-    .downcast::<App>()
-    .unwrap()
-    .model()
+        .expect("Failed to retrieve application singleton")
+        .downcast::<App>()
+        .unwrap()
+        .model()
 }
 
-pub fn database() -> Rc<Database>{
+pub fn database() -> Rc<Database> {
     gio::Application::default()
-    .expect("Failed to retrieve application singleton")
-    .downcast::<App>()
-    .unwrap()
-    .database()
+        .expect("Failed to retrieve application singleton")
+        .downcast::<App>()
+        .unwrap()
+        .database()
 }
 
 #[allow(dead_code)]
 pub fn active_window() -> Option<gtk::Window> {
     let app = gio::Application::default()
-    .expect("Failed to retrieve application singleton")
-    .downcast::<gtk::Application>()
-    .unwrap();
+        .expect("Failed to retrieve application singleton")
+        .downcast::<gtk::Application>()
+        .unwrap();
 
-    let win = app
-    .active_window();
+    let win = app.active_window();
 
     win
 }
@@ -181,8 +183,8 @@ pub fn seconds_to_string_longform(duration: f64) -> String {
 
     let mut desc = String::new();
 
-    let hours_u64= hours.floor() as u64;
-    
+    let hours_u64 = hours.floor() as u64;
+
     if hours_u64 > 1 {
         desc.push_str(&format!("{} hours", hours_u64));
     } else if hours_u64 == 1 {
@@ -190,7 +192,6 @@ pub fn seconds_to_string_longform(duration: f64) -> String {
     }
 
     let minutes_u64 = minutes.round() as u64;
-
 
     if minutes.floor() > 0.0 {
         if !desc.is_empty() {
@@ -207,8 +208,6 @@ pub fn seconds_to_string_longform(duration: f64) -> String {
         } else {
             desc.push_str(&format!("1 minute"));
         }
-
-
     }
 
     desc
@@ -247,8 +246,6 @@ pub fn load_palette(pixbuf: &Pixbuf) -> Option<Vec<gdk::RGBA>> {
     None
 }
 
-
 pub(crate) fn win(widget: &gtk::Widget) -> gtk::Window {
     widget.root().unwrap().downcast::<gtk::Window>().unwrap()
 }
-

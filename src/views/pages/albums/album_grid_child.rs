@@ -9,25 +9,23 @@ use adw::subclass::prelude::*;
 
 use gtk::{gdk, glib, glib::clone, CompositeTemplate};
 
-use std::{cell::{Cell, RefCell}, rc::Rc};
 use log::{debug, error};
-
-use crate::model::album::Album;
-use crate::views::art::{
-    placeholder_art::PlaceHolderArt,
-    rounded_album_art::RoundedAlbumArt,
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
 };
+
+use crate::i18n::i18n_k;
+use crate::model::album::Album;
 use crate::search::SearchMethod;
 use crate::sort::SortMethod;
 use crate::util::{model, player, seconds_to_string_longform};
-use crate::i18n::i18n_k;
+use crate::views::art::{placeholder_art::PlaceHolderArt, rounded_album_art::RoundedAlbumArt};
 
 mod imp {
     use super::*;
     use glib::subclass::Signal;
-    use glib::{
-        Value, ParamSpec, ParamSpecEnum, ParamSpecBoolean,
-    };
+    use glib::{ParamSpec, ParamSpecBoolean, ParamSpecEnum, Value};
     use once_cell::sync::Lazy;
 
     #[derive(Debug, Default, CompositeTemplate)]
@@ -74,7 +72,7 @@ mod imp {
 
         #[template_child(id = "popover")]
         pub popover: TemplateChild<gtk::PopoverMenu>,
-        
+
         pub art: RefCell<Option<RoundedAlbumArt>>,
         pub placeholder_art: RefCell<Option<PlaceHolderArt>>,
         pub art_size: Cell<i32>,
@@ -106,30 +104,33 @@ mod imp {
         }
 
         fn properties() -> &'static [ParamSpec] {
-            static PROPERTIES: Lazy<Vec<ParamSpec>> =
-                Lazy::new(|| vec![
+            static PROPERTIES: Lazy<Vec<ParamSpec>> = Lazy::new(|| {
+                vec![
                     ParamSpecEnum::builder::<SortMethod>("sort-method").build(),
-                    ParamSpecBoolean::builder("display-labels-default").default_value(false).build(),
-                    ]
-                );
+                    ParamSpecBoolean::builder("display-labels-default")
+                        .default_value(false)
+                        .build(),
+                ]
+            });
             PROPERTIES.as_ref()
         }
-    
+
         fn set_property(&self, _id: usize, value: &Value, pspec: &ParamSpec) {
             match pspec.name() {
                 "display-labels-default" => {
-                    let display_labels_default = value.get().expect("The value needs to be of type `bool`.");
+                    let display_labels_default =
+                        value.get().expect("The value needs to be of type `bool`.");
                     self.display_labels_default.replace(display_labels_default);
-                },
+                }
                 "sort-method" => {
                     let sort_method = value.get().expect("The value needs to be of type `enum`.");
                     self.sort_method.replace(sort_method);
                     self.obj().update_sort_ui();
-                },
+                }
                 _ => unimplemented!(),
             }
         }
-    
+
         fn property(&self, _id: usize, pspec: &ParamSpec) -> Value {
             match pspec.name() {
                 "display-labels-default" => self.display_labels_default.get().to_value(),
@@ -140,11 +141,9 @@ mod imp {
 
         fn signals() -> &'static [Signal] {
             static SIGNALS: Lazy<Vec<Signal>> = Lazy::new(|| {
-                vec![
-                    Signal::builder("clicked")
-                        .param_types([<i64>::static_type()])
-                        .build()
-                    ]
+                vec![Signal::builder("clicked")
+                    .param_types([<i64>::static_type()])
+                    .build()]
             });
 
             SIGNALS.as_ref()
@@ -169,7 +168,7 @@ impl Default for AlbumGridChild {
 
 impl AlbumGridChild {
     pub fn new() -> AlbumGridChild {
-         Self::default()
+        Self::default()
     }
 
     pub fn initialize(&self) {
@@ -185,44 +184,38 @@ impl AlbumGridChild {
             .flags(glib::BindingFlags::SYNC_CREATE)
             .build();
 
-        imp.main_button.connect_clicked(
-            clone!(@strong self as this => move |_button| {
+        imp.main_button
+            .connect_clicked(clone!(@strong self as this => move |_button| {
                 let id = this.imp().album.borrow().as_ref().unwrap().id().clone();
                 this.emit_by_name::<()>("clicked", &[&id]);
-            })
-        );
+            }));
 
         imp.play_button.connect_clicked(
             clone!(@strong self as this => @default-panic, move |_button| {
                 let album = this.album();
                 player().clear_play_album(album.tracks(), Some(album.title()));
-            })
+            }),
         );
 
         imp.add_button.connect_clicked(
             clone!(@strong self as this => @default-panic, move |_button| {
                 let tracks = this.album().tracks();
                 player().add_album(tracks);
-            })
+            }),
         );
 
         let ctrl = gtk::EventControllerMotion::new();
-        ctrl.connect_enter(
-            clone!(@strong self as this => move |_controller, _x, _y| {
-                let imp = this.imp();
-                imp.overlay_box.show();
-                imp.main_button.show();
-            })
-        );
-        ctrl.connect_leave(
-            clone!(@strong self as this => move |_controller| {
-                let imp = this.imp();
-                imp.overlay_box.hide();
-                imp.main_button.hide();
-            })
-        );
+        ctrl.connect_enter(clone!(@strong self as this => move |_controller, _x, _y| {
+            let imp = this.imp();
+            imp.overlay_box.show();
+            imp.main_button.show();
+        }));
+        ctrl.connect_leave(clone!(@strong self as this => move |_controller| {
+            let imp = this.imp();
+            imp.overlay_box.hide();
+            imp.main_button.hide();
+        }));
         self.add_controller(ctrl);
-
 
         let ctrl = gtk::GestureClick::new();
         ctrl.connect_unpaired_release(
@@ -232,7 +225,7 @@ impl AlbumGridChild {
                 if button == gdk::BUTTON_SECONDARY {
                     imp.popover.popup();
                 }
-            })
+            }),
         );
         self.add_controller(ctrl);
     }
@@ -246,7 +239,11 @@ impl AlbumGridChild {
         let imp = self.imp();
         match imp.album.borrow().as_ref() {
             Some(album) => {
-                imp.main_button.set_tooltip_text(Some(&format!("{} - {}", album.title(), album.artist())));
+                imp.main_button.set_tooltip_text(Some(&format!(
+                    "{} - {}",
+                    album.title(),
+                    album.artist()
+                )));
                 imp.title_label.set_label(&album.title());
                 imp.artist_label.set_label(&album.artist());
                 imp.date_label.set_label(&album.date());
@@ -254,10 +251,14 @@ impl AlbumGridChild {
 
                 let duration = album.duration();
                 if duration > 0.0 {
-                    imp.duration_label.set_label(&seconds_to_string_longform(duration));
+                    imp.duration_label
+                        .set_label(&seconds_to_string_longform(duration));
                 }
 
-                imp.track_count_label.set_label(&i18n_k("{number_of_tracks} tracks", &[("number_of_tracks", &format!("{}", album.n_tracks()))]));
+                imp.track_count_label.set_label(&i18n_k(
+                    "{number_of_tracks} tracks",
+                    &[("number_of_tracks", &format!("{}", album.n_tracks()))],
+                ));
 
                 match album.cover_art_id() {
                     Some(id) => match self.load_image(id) {
@@ -318,7 +319,7 @@ impl AlbumGridChild {
         };
     }
 
-    fn album(&self ) -> Rc<Album> {
+    fn album(&self) -> Rc<Album> {
         self.imp().album.borrow().as_ref().unwrap().clone()
     }
 
@@ -327,7 +328,7 @@ impl AlbumGridChild {
 
         if !searching {
             return;
-        } 
+        }
 
         imp.info_box.set_visible(searching);
         match search {
@@ -339,7 +340,7 @@ impl AlbumGridChild {
                 imp.genre_label.hide();
                 imp.duration_label.hide();
                 imp.track_count_label.hide();
-            },
+            }
             SearchMethod::Genre => {
                 imp.title_label.show();
                 imp.genre_label.show();
@@ -348,7 +349,7 @@ impl AlbumGridChild {
                 imp.date_label.hide();
                 imp.duration_label.hide();
                 imp.track_count_label.hide();
-            },
+            }
             SearchMethod::ReleaseDate => {
                 imp.title_label.show();
                 imp.date_label.show();
@@ -357,7 +358,7 @@ impl AlbumGridChild {
                 imp.genre_label.hide();
                 imp.duration_label.hide();
                 imp.track_count_label.hide();
-            },
+            }
             _ => {
                 imp.title_label.show();
                 imp.artist_label.show();
@@ -366,10 +367,8 @@ impl AlbumGridChild {
                 imp.genre_label.hide();
                 imp.duration_label.hide();
                 imp.track_count_label.hide();
-            },
+            }
         }
-
-
     }
 
     fn update_sort_ui(&self) {
@@ -388,7 +387,7 @@ impl AlbumGridChild {
                 imp.date_label.hide();
                 imp.duration_label.hide();
                 imp.track_count_label.hide();
-            },
+            }
             SortMethod::ReleaseDate => {
                 if !imp.display_labels_default.get() {
                     imp.title_label.hide();
@@ -401,7 +400,7 @@ impl AlbumGridChild {
                 imp.artist_label.hide();
                 imp.duration_label.hide();
                 imp.track_count_label.hide();
-            },
+            }
             SortMethod::Duration => {
                 if !imp.display_labels_default.get() {
                     imp.title_label.hide();
@@ -414,7 +413,7 @@ impl AlbumGridChild {
                 imp.genre_label.hide();
                 imp.artist_label.hide();
                 imp.track_count_label.hide();
-            },
+            }
             SortMethod::TrackCount => {
                 if !imp.display_labels_default.get() {
                     imp.title_label.hide();
@@ -427,7 +426,7 @@ impl AlbumGridChild {
                 imp.date_label.hide();
                 imp.genre_label.hide();
                 imp.artist_label.hide();
-            },
+            }
             _ => {
                 if !imp.display_labels_default.get() {
                     imp.info_box.hide();
@@ -439,7 +438,7 @@ impl AlbumGridChild {
                     imp.duration_label.hide();
                     imp.track_count_label.hide();
                 }
-            },
+            }
         }
     }
 }

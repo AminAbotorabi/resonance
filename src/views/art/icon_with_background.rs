@@ -15,8 +15,7 @@ mod imp {
     use super::*;
 
     #[derive(Debug, Default)]
-    pub struct IconWithBackground  {
-    }
+    pub struct IconWithBackground {}
 
     #[glib::object_subclass]
     impl ObjectSubclass for IconWithBackground {
@@ -33,7 +32,6 @@ mod imp {
 
     impl WidgetImpl for IconWithBackground {}
     impl BinImpl for IconWithBackground {}
-
 }
 
 glib::wrapper! {
@@ -43,7 +41,7 @@ glib::wrapper! {
 
 impl IconWithBackground {
     pub fn new(icon_name: &str, size: i32, circle: bool) -> IconWithBackground {
-        let object: IconWithBackground= glib::Object::builder::<IconWithBackground>().build();
+        let object: IconWithBackground = glib::Object::builder::<IconWithBackground>().build();
         object.construct(icon_name, size, circle);
         object
     }
@@ -56,17 +54,15 @@ impl IconWithBackground {
             box_.set_vexpand(true);
             box_.set_valign(gtk::Align::Center);
             box_.set_halign(gtk::Align::Center);
-    
-    
+
             let icon = gtk::Image::from_icon_name(icon_name);
             box_.append(&icon);
 
+            let overlay = gtk::Overlay::new();
 
-            let overlay = gtk::Overlay::new(); 
-    
             overlay.add_overlay(&box_);
             overlay.set_child(Some(&bg));
-    
+
             self.set_child(Some(&overlay));
         } else {
             let bg = RoundedBackground::new("rgba(0, 0, 0, 0.7)", size);
@@ -75,17 +71,16 @@ impl IconWithBackground {
             box_.set_vexpand(true);
             box_.set_valign(gtk::Align::Center);
             box_.set_halign(gtk::Align::Center);
-    
+
             let icon = gtk::Image::from_icon_name(icon_name);
             box_.append(&icon);
 
-            let overlay = gtk::Overlay::new(); 
-    
+            let overlay = gtk::Overlay::new();
+
             overlay.add_overlay(&box_);
             overlay.set_child(Some(&bg));
-    
+
             self.set_child(Some(&overlay));
         }
-
     }
 }

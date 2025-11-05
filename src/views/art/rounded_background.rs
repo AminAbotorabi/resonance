@@ -5,7 +5,7 @@
  */
 
 use gtk::prelude::*;
-use gtk::{subclass::prelude::*, gdk, glib, graphene, gsk, gdk_pixbuf};
+use gtk::{gdk, gdk_pixbuf, glib, graphene, gsk, subclass::prelude::*};
 use std::{cell::Cell, cell::RefCell, rc::Rc};
 
 mod imp {
@@ -38,7 +38,8 @@ mod imp {
 
         fn snapshot(&self, snapshot: &gtk::Snapshot) {
             if let Some(texture) = self.texture.borrow_mut().as_ref() {
-                let rect = graphene::Rect::new(0.0, 0.0, texture.width() as f32, texture.height() as f32);
+                let rect =
+                    graphene::Rect::new(0.0, 0.0, texture.width() as f32, texture.height() as f32);
                 let rounded_rect = gsk::RoundedRect::from_rect(rect, 180.0);
 
                 snapshot.push_rounded_clip(&rounded_rect);
@@ -47,15 +48,16 @@ mod imp {
             } else {
                 let widget = &*self.obj();
                 let color = gdk::RGBA::parse(self.color.borrow().clone()).unwrap();
-                let rect = graphene::Rect::new(0.0, 0.0, widget.width() as f32, widget.height() as f32);
+                let rect =
+                    graphene::Rect::new(0.0, 0.0, widget.width() as f32, widget.height() as f32);
                 let rounded_rect = gsk::RoundedRect::from_rect(rect, 10.0);
-    
+
                 snapshot.push_rounded_clip(&rounded_rect);
                 snapshot.append_color(&color, &rect);
                 snapshot.pop();
             }
         }
-    }    
+    }
 }
 
 glib::wrapper! {
@@ -78,7 +80,14 @@ impl RoundedBackground {
 
     pub fn load_art(&self, pixbuf: Rc<gdk_pixbuf::Pixbuf>) {
         let imp = self.imp();
-        let bg_pixbuf = gdk_pixbuf::Pixbuf::new(gdk_pixbuf::Colorspace::Rgb, false, 8, imp.size.get(), imp.size.get()).unwrap();
+        let bg_pixbuf = gdk_pixbuf::Pixbuf::new(
+            gdk_pixbuf::Colorspace::Rgb,
+            false,
+            8,
+            imp.size.get(),
+            imp.size.get(),
+        )
+        .unwrap();
         bg_pixbuf.fill(0);
 
         let w = pixbuf.width();
@@ -95,15 +104,21 @@ impl RoundedBackground {
 
             if let Some(pixbuf) = pixbuf.scale_simple(w, h, gdk_pixbuf::InterpType::Bilinear) {
                 pixbuf.composite(
-                    &bg_pixbuf, 0, 0, 
-                    imp.size.get(), imp.size.get(),
-                    offset_x, offset_y, 
-                    1.0, 1.0, gdk_pixbuf::InterpType::Nearest, 255
+                    &bg_pixbuf,
+                    0,
+                    0,
+                    imp.size.get(),
+                    imp.size.get(),
+                    offset_x,
+                    offset_y,
+                    1.0,
+                    1.0,
+                    gdk_pixbuf::InterpType::Nearest,
+                    255,
                 );
                 let texture = gdk::Texture::for_pixbuf(&bg_pixbuf);
                 imp.texture.replace(Some(texture));
             }
-
         } else {
             let scaling_factor = imp.size.get() as f32 / h as f32;
 
@@ -115,18 +130,22 @@ impl RoundedBackground {
 
             if let Some(pixbuf) = pixbuf.scale_simple(w, h, gdk_pixbuf::InterpType::Bilinear) {
                 pixbuf.composite(
-                    &bg_pixbuf, 0, 0, 
-                    imp.size.get(), imp.size.get(),
-                    offset_x, offset_y, 
-                    1.0, 1.0, gdk_pixbuf::InterpType::Nearest, 255
+                    &bg_pixbuf,
+                    0,
+                    0,
+                    imp.size.get(),
+                    imp.size.get(),
+                    offset_x,
+                    offset_y,
+                    1.0,
+                    1.0,
+                    gdk_pixbuf::InterpType::Nearest,
+                    255,
                 );
                 let texture = gdk::Texture::for_pixbuf(&bg_pixbuf);
                 imp.texture.replace(Some(texture));
             }
-
         }
-
-
 
         // if let Some(pixbuf) = pixbuf.scale_simple(imp.size.get(), imp.size.get(), gdk_pixbuf::InterpType::Bilinear) {
         //     let texture = gdk::Texture::for_pixbuf(&pixbuf);

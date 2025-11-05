@@ -4,23 +4,22 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-
 use adw::prelude::*;
 use adw::subclass::prelude::*;
 
 use gtk::{glib, glib::clone};
 
-use std::{collections::HashMap, cell::RefCell, rc::Rc};
 use log::debug;
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-use crate::model::track::Track;
-use crate::model::album::Album;
-use crate::util::player;
 use crate::i18n::i18n_k;
+use crate::model::album::Album;
+use crate::model::track::Track;
+use crate::util::player;
 
 mod imp {
     use super::*;
-    
+
     #[derive(Debug, Default)]
     pub struct DiscButtonPriv {
         pub play_button: RefCell<gtk::Button>,
@@ -64,7 +63,13 @@ impl DiscButton {
         let imp = self.imp();
         let album_title = album.title();
 
-        imp.title.replace(i18n_k("{album_title}, Disc {disc_number}", &[("disc_number", &format!("{}", disc_n + 1)), ("album_title", &album_title)]));
+        imp.title.replace(i18n_k(
+            "{album_title}, Disc {disc_number}",
+            &[
+                ("disc_number", &format!("{}", disc_n + 1)),
+                ("album_title", &album_title),
+            ],
+        ));
 
         match album.disc(disc_n) {
             Ok(disc) => {
@@ -72,10 +77,9 @@ impl DiscButton {
             }
             Err(e) => {
                 debug!("An error occurred: {}", e)
-            },
-
+            }
         }
-        
+
         self.set_margin_start(5);
         self.set_margin_top(5);
         self.set_margin_end(5);
@@ -89,13 +93,22 @@ impl DiscButton {
         play_button.set_has_frame(false);
         play_button.set_css_classes(&[&"background", &"frame"]);
 
-        play_button.set_tooltip_text(Some(&i18n_k("Play Disc {disc_number} of {album_title}", &[("disc_number", &format!("{}", disc_n + 1)), ("album_title", &album_title)])));
+        play_button.set_tooltip_text(Some(&i18n_k(
+            "Play Disc {disc_number} of {album_title}",
+            &[
+                ("disc_number", &format!("{}", disc_n + 1)),
+                ("album_title", &album_title),
+            ],
+        )));
 
         let label = gtk::Label::new(None);
         label.set_use_markup(true);
 
         //Translators: only replace "Disc "
-        label.set_label(&i18n_k("<span weight=\"ultralight\">Disc {disc_number}</span>", &[("disc_number", &format!("{}", disc_n + 1))]));
+        label.set_label(&i18n_k(
+            "<span weight=\"ultralight\">Disc {disc_number}</span>",
+            &[("disc_number", &format!("{}", disc_n + 1))],
+        ));
         label.set_halign(gtk::Align::Start);
 
         let play_icon = gtk::Image::from_icon_name("media-playback-start-symbolic");
@@ -109,7 +122,6 @@ impl DiscButton {
         add_button.set_visible(false);
         add_button.set_child(Some(&gtk::Image::from_icon_name("plus-symbolic")));
         add_button.set_css_classes(&[&"background", &"frame"]);
-   
 
         play_button.connect_clicked(
             clone!(@strong self as this => @default-panic, move |_button| {
@@ -123,7 +135,6 @@ impl DiscButton {
             }),
         );
 
-
         self.set_css_classes(&[&"linked"]);
         self.append(&play_button);
         self.append(&add_button);
@@ -133,23 +144,19 @@ impl DiscButton {
         imp.play_icon.replace(play_icon);
 
         let ctrl = gtk::EventControllerMotion::new();
-        
-        ctrl.connect_enter(
-            clone!(@strong self as this => move |_controller, _x, _y| {
-                let imp = this.imp();
-                imp.add_button.borrow().show();
-                imp.play_icon.borrow().show();
-            })
-        );
-        
-        ctrl.connect_leave(
-            clone!(@strong self as this => move |_controller| {
-                let imp = this.imp();
-                imp.add_button.borrow().hide();
-                imp.play_icon.borrow().hide();
-            })
-        );
-        
+
+        ctrl.connect_enter(clone!(@strong self as this => move |_controller, _x, _y| {
+            let imp = this.imp();
+            imp.add_button.borrow().show();
+            imp.play_icon.borrow().show();
+        }));
+
+        ctrl.connect_leave(clone!(@strong self as this => move |_controller| {
+            let imp = this.imp();
+            imp.add_button.borrow().hide();
+            imp.play_icon.borrow().hide();
+        }));
+
         self.add_controller(ctrl);
     }
 
@@ -171,4 +178,3 @@ impl DiscButton {
         self.imp().title.borrow().clone()
     }
 }
-    

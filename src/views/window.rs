@@ -5,42 +5,40 @@
  */
 
 use adw::{subclass::prelude::*, Squeezer, ViewSwitcher, ViewSwitcherTitle};
-use gtk::{prelude::*, gdk, gio, glib, glib::{clone, Sender}, CompositeTemplate};
+use gtk::{
+    gdk, gio, glib,
+    glib::{clone, Sender},
+    prelude::*,
+    CompositeTemplate,
+};
 use gtk_macros::send;
 
-use std::cell::{Cell, RefCell};
-use rand::{thread_rng, Rng};
 use log::{debug, error};
+use rand::{thread_rng, Rng};
+use std::cell::{Cell, RefCell};
 
 use crate::app::App;
 use crate::database::DatabaseAction;
-use crate::web::{discord::DiscordAction, last_fm::LastFmAction};
+use crate::i18n::i18n;
 use crate::sort::SortMethod;
 use crate::toasts::add_error_toast;
-use crate::util::{model, player, database, get_child_by_index, settings_manager};
-use crate::i18n::i18n;
+use crate::util::{database, get_child_by_index, model, player, settings_manager};
+use crate::web::{discord::DiscordAction, last_fm::LastFmAction};
 
+use super::control_bar::ControlBar;
 use super::dialog::{
-    save_playlist_dialog::SavePlaylistDialog, 
-    add_tracks_to_playlist_dialog::AddToPlaylistDialog,
+    add_tracks_to_playlist_dialog::AddToPlaylistDialog, alpha_dialog::AlphaDialog,
     delete_playlist_dialog::DeletePlaylistDialog,
-    duplicate_playlist_dialog::DuplicatePlaylistDialog,
-    alpha_dialog::AlphaDialog,
+    duplicate_playlist_dialog::DuplicatePlaylistDialog, save_playlist_dialog::SavePlaylistDialog,
 };
 use super::pages::{
-    albums::album_detail_page::AlbumDetailPage,
-    albums::album_grid_page::AlbumGridPage,
-    artists::artist_detail_page::ArtistDetailPage,
-    artists::artist_grid_page::ArtistGridPage,
-    genres::genre_detail_page::GenreDetailPage,
-    genres::genre_grid_page::GenreGridPage,
+    albums::album_detail_page::AlbumDetailPage, albums::album_grid_page::AlbumGridPage,
+    artists::artist_detail_page::ArtistDetailPage, artists::artist_grid_page::ArtistGridPage,
+    genres::genre_detail_page::GenreDetailPage, genres::genre_grid_page::GenreGridPage,
     playlists::playlist_detail_page::PlaylistDetailPage,
-    playlists::playlist_grid_page::PlaylistGridPage,
-    queue::queue_page::QueuePage,
-    queue::queue_sidebar::QueueSidebar,
-    tracks::track_page::TrackPage,
+    playlists::playlist_grid_page::PlaylistGridPage, queue::queue_page::QueuePage,
+    queue::queue_sidebar::QueueSidebar, tracks::track_page::TrackPage,
 };
-use super::control_bar::ControlBar;
 
 #[derive(Debug, Clone, Copy, PartialEq, glib::Enum)]
 #[enum_type(name = "WindowPage")]
@@ -163,7 +161,7 @@ mod imp {
 
         #[template_child(id = "navigate_back_button")]
         pub navigate_back_button: TemplateChild<gtk::Button>,
-        
+
         pub open_queue: Cell<bool>,
         pub show_back_nav_button: Cell<bool>,
         pub current_css_cover_art_id: Cell<i64>,
@@ -224,7 +222,7 @@ mod imp {
                 playlist_grid_page: TemplateChild::default(),
                 playlist_detail_page: TemplateChild::default(),
                 control_bar: TemplateChild::default(),
-                
+
                 open_queue: Cell::new(true),
                 db_sender: RefCell::new(None),
                 window_page: Cell::new(WindowPage::default()),
@@ -310,37 +308,35 @@ impl Window {
         // filter.add_mime_type("image/*");
         // dialog.add_filter(&filter);
 
-        dialog.connect_response(
-            clone!(@weak self as this => move |dialog, response| {
-                if response == gtk::ResponseType::Accept {
-                    let imp = this.imp();
+        dialog.connect_response(clone!(@weak self as this => move |dialog, response| {
+            if response == gtk::ResponseType::Accept {
+                let imp = this.imp();
 
-                    let folder = dialog.file().unwrap().path().unwrap();
-                    
-                    if !folder.is_dir() {
-                        add_error_toast(i18n("Unable to add music folder, not a valid directory."));
-                    }
-                    
-                    let path_str = folder.clone().into_os_string().into_string().ok().unwrap();
+                let folder = dialog.file().unwrap().path().unwrap();
 
-                    imp.spinner.set_visible(true);
-                    imp.spinner.start();
-                    imp.add_library_button.hide();
-
-                    imp.welcome_status.set_title(&i18n("Importing Music Folder..."));
-                    imp.welcome_status.set_description(Some(&path_str));
-                    
-                    debug!("DIALOG FOLDER RECEIVED: {:?}", path_str);
-
-                    if let Some(sender) = imp.db_sender.borrow().as_ref() {
-                        send!(sender, DatabaseAction::TryAddMusicFolder(folder))
-                    }
-                } else {
-                    error!("No folder selected.");
+                if !folder.is_dir() {
+                    add_error_toast(i18n("Unable to add music folder, not a valid directory."));
                 }
-                dialog.hide();
-            }),
-        );
+
+                let path_str = folder.clone().into_os_string().into_string().ok().unwrap();
+
+                imp.spinner.set_visible(true);
+                imp.spinner.start();
+                imp.add_library_button.hide();
+
+                imp.welcome_status.set_title(&i18n("Importing Music Folder..."));
+                imp.welcome_status.set_description(Some(&path_str));
+
+                debug!("DIALOG FOLDER RECEIVED: {:?}", path_str);
+
+                if let Some(sender) = imp.db_sender.borrow().as_ref() {
+                    send!(sender, DatabaseAction::TryAddMusicFolder(folder))
+                }
+            } else {
+                error!("No folder selected.");
+            }
+            dialog.hide();
+        }));
 
         imp.folder_dialog.replace(Some(dialog));
 
@@ -348,7 +344,7 @@ impl Window {
             clone!(@strong self as this => @default-panic, move |_button| {
                 this.imp().folder_dialog.borrow().as_ref().unwrap().show();
             }),
-        );        
+        );
     }
 
     fn setup_database(&self) {
@@ -396,7 +392,7 @@ impl Window {
             clone!(@weak self as win => move |_, _| {
                 win.update_colors_from_cover();
             }),
-    );
+        );
 
         player.state().connect_local(
             "queue-empty",
@@ -457,7 +453,6 @@ impl Window {
             }),
         );
 
-
         let imp = self.imp();
 
         imp.meta_stack.connect_notify_local(Some("visible-child"),         
@@ -475,39 +470,45 @@ impl Window {
             }
         ));
 
-        imp.album_grid_page.connect_notify_local(Some("hidden"), 
-        clone!(@strong self as this => move |page, _pspec| {
-                this.view_stack_page_visible(WindowPage::Albums, !page.imp().hidden.get());
-            }
-        ));
+        imp.album_grid_page.connect_notify_local(
+            Some("hidden"),
+            clone!(@strong self as this => move |page, _pspec| {
+                    this.view_stack_page_visible(WindowPage::Albums, !page.imp().hidden.get());
+                }
+            ),
+        );
 
-        imp.track_page.connect_notify_local(Some("hidden"), 
-        clone!(@strong self as this => move |page, _pspec| {
-                this.view_stack_page_visible(WindowPage::Tracks, !page.imp().hidden.get());
-            }
-        ));
+        imp.track_page.connect_notify_local(
+            Some("hidden"),
+            clone!(@strong self as this => move |page, _pspec| {
+                    this.view_stack_page_visible(WindowPage::Tracks, !page.imp().hidden.get());
+                }
+            ),
+        );
 
+        imp.playlist_grid_page.connect_notify_local(
+            Some("hidden"),
+            clone!(@strong self as this => move |page, _pspec| {
+                    this.view_stack_page_visible(WindowPage::Playlists, !page.imp().hidden.get());
+                }
+            ),
+        );
 
-        imp.playlist_grid_page.connect_notify_local(Some("hidden"), 
-        clone!(@strong self as this => move |page, _pspec| {
-                this.view_stack_page_visible(WindowPage::Playlists, !page.imp().hidden.get());
-            }
-        ));
+        imp.genre_grid_page.connect_notify_local(
+            Some("hidden"),
+            clone!(@strong self as this => move |page, _pspec| {
+                    this.view_stack_page_visible(WindowPage::Genres, !page.imp().hidden.get());
+                }
+            ),
+        );
 
-
-        imp.genre_grid_page.connect_notify_local(Some("hidden"), 
-        clone!(@strong self as this => move |page, _pspec| {
-                this.view_stack_page_visible(WindowPage::Genres, !page.imp().hidden.get());
-            }
-        ));
-
-
-        imp.artist_grid_page.connect_notify_local(Some("hidden"), 
-        clone!(@strong self as this => move |page, _pspec| {
-                this.view_stack_page_visible(WindowPage::Artists, !page.imp().hidden.get());
-            }
-        ));
-
+        imp.artist_grid_page.connect_notify_local(
+            Some("hidden"),
+            clone!(@strong self as this => move |page, _pspec| {
+                    this.view_stack_page_visible(WindowPage::Artists, !page.imp().hidden.get());
+                }
+            ),
+        );
 
         imp.stack.connect_notify_local(
             Some("visible-child-name"),
@@ -704,7 +705,6 @@ impl Window {
         );
     }
 
-
     /*
     NAVIGATION
     */
@@ -731,70 +731,80 @@ impl Window {
         let is_queue: bool = page_option == WindowPage::Queue;
         if is_queue {
             imp.queue_page.update_view();
-        } 
+        }
 
-        imp.queue_flap.set_reveal_flap(is_queue && imp.open_queue.get());
+        imp.queue_flap
+            .set_reveal_flap(is_queue && imp.open_queue.get());
         imp.control_bar.set_revealed(!is_queue);
     }
 
     fn search_sort_visibility(&self, page_option: WindowPage) {
         let imp = self.imp();
-        
+
         //imp.toggle_sort_button.set_menu_model();
         imp.navigate_back_button.hide();
         match page_option {
             WindowPage::Queue => self.set_search_sort_visibility(false),
             WindowPage::Albums => {
-                let is_grid = imp.album_stack.visible_child().as_ref() == Some(imp.album_grid_page.upcast_ref());
+                let is_grid = imp.album_stack.visible_child().as_ref()
+                    == Some(imp.album_grid_page.upcast_ref());
                 self.set_search_sort_visibility(is_grid);
-                imp.toggle_sort_button.set_menu_model(Some(imp.album_grid_page.sort_menu()));
+                imp.toggle_sort_button
+                    .set_menu_model(Some(imp.album_grid_page.sort_menu()));
                 if !is_grid && imp.show_back_nav_button.get() {
                     imp.navigate_back_button.show();
                 }
             }
             WindowPage::Artists => {
-                let is_grid = imp.artist_stack.visible_child().as_ref() == Some(imp.artist_grid_page.upcast_ref());
+                let is_grid = imp.artist_stack.visible_child().as_ref()
+                    == Some(imp.artist_grid_page.upcast_ref());
                 imp.toggle_search_button.set_visible(true);
                 imp.toggle_sort_button.set_visible(is_grid);
                 if is_grid {
-                    imp.toggle_sort_button.set_menu_model(Some(imp.artist_grid_page.sort_menu()));
+                    imp.toggle_sort_button
+                        .set_menu_model(Some(imp.artist_grid_page.sort_menu()));
                 } else {
                     if imp.show_back_nav_button.get() {
                         imp.navigate_back_button.show();
                     }
-                    imp.toggle_sort_button.set_menu_model(Some(imp.artist_detail_page.sort_menu()));
+                    imp.toggle_sort_button
+                        .set_menu_model(Some(imp.artist_detail_page.sort_menu()));
                 }
             }
             WindowPage::Tracks => {
                 self.set_search_sort_visibility(true);
-                imp.toggle_sort_button.set_menu_model(Some(imp.track_page.sort_menu()));
-            },
+                imp.toggle_sort_button
+                    .set_menu_model(Some(imp.track_page.sort_menu()));
+            }
             WindowPage::Genres => {
                 let is_grid = imp.genre_stack.visible_child().as_ref()
                     == Some(imp.genre_grid_page.upcast_ref());
                 imp.toggle_search_button.set_visible(true);
                 imp.toggle_sort_button.set_visible(is_grid);
                 if is_grid {
-                    imp.toggle_sort_button.set_menu_model(Some(imp.genre_grid_page.sort_menu()));
+                    imp.toggle_sort_button
+                        .set_menu_model(Some(imp.genre_grid_page.sort_menu()));
                 } else {
                     if imp.show_back_nav_button.get() {
                         imp.navigate_back_button.show();
                     }
-                    imp.toggle_sort_button.set_menu_model(Some(imp.genre_detail_page.sort_menu()));
+                    imp.toggle_sort_button
+                        .set_menu_model(Some(imp.genre_detail_page.sort_menu()));
                 }
             }
             WindowPage::Playlists => {
-                let is_grid = imp.playlist_stack.visible_child().as_ref() == Some(imp.playlist_grid_page.upcast_ref());
+                let is_grid = imp.playlist_stack.visible_child().as_ref()
+                    == Some(imp.playlist_grid_page.upcast_ref());
                 imp.toggle_search_button.set_visible(true);
                 imp.toggle_sort_button.set_visible(is_grid);
                 if is_grid {
-                    imp.toggle_sort_button.set_menu_model(Some(imp.playlist_grid_page.sort_menu()));
+                    imp.toggle_sort_button
+                        .set_menu_model(Some(imp.playlist_grid_page.sort_menu()));
                 } else {
                     if imp.show_back_nav_button.get() {
                         imp.navigate_back_button.show();
                     }
                 }
-
             }
         }
     }
@@ -805,10 +815,8 @@ impl Window {
 
     fn go_back_to_albums(&self) {
         let imp = self.imp();
-        imp.album_stack.set_visible_child_full(
-            "album-grid-stack-page",
-            gtk::StackTransitionType::Crossfade,
-        );
+        imp.album_stack
+            .set_visible_child_full("album-grid-stack-page", gtk::StackTransitionType::Crossfade);
         self.set_window_page(WindowPage::Albums);
         self.set_search_sort_visibility(true);
         imp.navigate_back_button.hide();
@@ -820,7 +828,8 @@ impl Window {
             "artists-grid-stack-page",
             gtk::StackTransitionType::Crossfade,
         );
-        imp.toggle_sort_button.set_menu_model(Some(imp.artist_grid_page.sort_menu()));
+        imp.toggle_sort_button
+            .set_menu_model(Some(imp.artist_grid_page.sort_menu()));
         self.set_window_page(WindowPage::Artists);
         self.set_search_sort_visibility(true);
         imp.navigate_back_button.hide();
@@ -828,11 +837,10 @@ impl Window {
 
     fn go_back_to_genres(&self) {
         let imp = self.imp();
-        imp.genre_stack.set_visible_child_full(
-            "genre-grid-stack-page",
-            gtk::StackTransitionType::Crossfade,
-        );
-        imp.toggle_sort_button.set_menu_model(Some(imp.artist_grid_page.sort_menu()));
+        imp.genre_stack
+            .set_visible_child_full("genre-grid-stack-page", gtk::StackTransitionType::Crossfade);
+        imp.toggle_sort_button
+            .set_menu_model(Some(imp.artist_grid_page.sort_menu()));
         self.set_window_page(WindowPage::Genres);
         self.set_search_sort_visibility(true);
         imp.navigate_back_button.hide();
@@ -869,7 +877,8 @@ impl Window {
             "artist-detail-stack-page",
             gtk::StackTransitionType::Crossfade,
         );
-        imp.toggle_sort_button.set_menu_model(Some(imp.artist_detail_page.sort_menu()));
+        imp.toggle_sort_button
+            .set_menu_model(Some(imp.artist_detail_page.sort_menu()));
         imp.artist_detail_page.update_artist(artist_id);
         self.set_search_sort_visibility(true);
         if imp.show_back_nav_button.get() {
@@ -883,7 +892,8 @@ impl Window {
             "genre-detail-stack-page",
             gtk::StackTransitionType::Crossfade,
         );
-        imp.toggle_sort_button.set_menu_model(Some(imp.genre_detail_page.sort_menu()));
+        imp.toggle_sort_button
+            .set_menu_model(Some(imp.genre_detail_page.sort_menu()));
         imp.genre_detail_page.update_genre(genre_id);
         self.set_search_sort_visibility(true);
         if imp.show_back_nav_button.get() {
@@ -932,11 +942,11 @@ impl Window {
 
     fn setup_provider(&self) {
         let imp = self.imp();
-        
+
         if let Some(display) = gdk::Display::default() {
             gtk::StyleContext::add_provider_for_display(&display, &imp.provider, 400);
         }
-        
+
         self.update_color_hex();
     }
 
@@ -977,12 +987,11 @@ impl Window {
         let model = model();
 
         if let Some(cover_art_id) = state.cover() {
-
             if imp.current_css_cover_art_id.get() == cover_art_id {
                 return;
             }
 
-            if let Ok(cover_art) = model.cover_art(cover_art_id)  {
+            if let Ok(cover_art) = model.cover_art(cover_art_id) {
                 if let Ok(palette) = cover_art.palette() {
                     if let Some(palette) = palette {
                         self.update_color_rgb(palette);
@@ -1044,15 +1053,16 @@ impl Window {
         };
 
         //SET VIEW SWITCHER TITLE BUTTON VISIBLE
-        let squeezer = get_child_by_index::<ViewSwitcherTitle, Squeezer>(&imp.view_switcher_title, 0);
-        
+        let squeezer =
+            get_child_by_index::<ViewSwitcherTitle, Squeezer>(&imp.view_switcher_title, 0);
+
         //wide
         let view_switcher = get_child_by_index::<Squeezer, ViewSwitcher>(&squeezer, 0);
         for child in view_switcher.observe_children().snapshot().iter() {
             let name = child.property::<String>("label");
             if name.as_str() == label {
                 child.set_property("visible", visible.to_value());
-                break
+                break;
             }
         }
 
@@ -1062,12 +1072,13 @@ impl Window {
             let name = child.property::<String>("label");
             if name.as_str() == label {
                 child.set_property("visible", visible.to_value());
-                break
+                break;
             }
         }
 
         //SET VIEW SWITCHER BAR BUTTON VISIBLE
-        let action_bar = get_child_by_index::<adw::ViewSwitcherBar, gtk::ActionBar>(&imp.view_switcher_bar, 0);
+        let action_bar =
+            get_child_by_index::<adw::ViewSwitcherBar, gtk::ActionBar>(&imp.view_switcher_bar, 0);
         let revealer = get_child_by_index::<gtk::ActionBar, gtk::Revealer>(&action_bar, 0);
         let center_box = get_child_by_index::<gtk::Revealer, gtk::CenterBox>(&revealer, 0);
         let view_switcher = get_child_by_index::<gtk::CenterBox, adw::ViewSwitcher>(&center_box, 1);
@@ -1076,7 +1087,7 @@ impl Window {
             let name = child.property::<String>("label");
             if name.as_str() == label {
                 child.set_property("visible", visible.to_value());
-                break
+                break;
             }
         }
 
@@ -1084,23 +1095,22 @@ impl Window {
         match page_enum {
             WindowPage::Queue => {
                 imp.queue_page.set_visible(visible);
-            },
+            }
             WindowPage::Albums => {
                 imp.album_stack.set_visible(visible);
-            },
+            }
             WindowPage::Artists => {
                 imp.artist_stack.set_visible(visible);
-            },
+            }
             WindowPage::Tracks => {
                 imp.track_page.set_visible(visible);
-            },
+            }
             WindowPage::Genres => {
                 imp.genre_stack.set_visible(visible);
-            },
+            }
             WindowPage::Playlists => {
                 imp.playlist_stack.set_visible(visible);
-            }
-            // _ => debug!("Not implemented."),
+            } // _ => debug!("Not implemented."),
         }
     }
 
@@ -1108,13 +1118,14 @@ impl Window {
         let imp = self.imp();
 
         //SET VIEW SWITCHER TITLE BUTTON CONNECTION
-        let squeezer = get_child_by_index::<ViewSwitcherTitle, Squeezer>(&imp.view_switcher_title, 0);
-        
+        let squeezer =
+            get_child_by_index::<ViewSwitcherTitle, Squeezer>(&imp.view_switcher_title, 0);
+
         //wide
         let view_switcher = get_child_by_index::<Squeezer, ViewSwitcher>(&squeezer, 0);
         for child in view_switcher.observe_children().snapshot().iter() {
             let name = child.property::<String>("label");
-            if let Some(button) =  child.downcast_ref::<gtk::Button>() {
+            if let Some(button) = child.downcast_ref::<gtk::Button>() {
                 self.view_stack_button_connection(name, button);
             }
         }
@@ -1123,20 +1134,21 @@ impl Window {
         let view_switcher = get_child_by_index::<Squeezer, ViewSwitcher>(&squeezer, 1);
         for child in view_switcher.observe_children().snapshot().iter() {
             let name = child.property::<String>("label");
-            if let Some(button) =  child.downcast_ref::<gtk::Button>() {
+            if let Some(button) = child.downcast_ref::<gtk::Button>() {
                 self.view_stack_button_connection(name, button);
             }
         }
 
         //SET VIEW SWITCHER BAR BUTTON CONNECTION
-        let action_bar = get_child_by_index::<adw::ViewSwitcherBar, gtk::ActionBar>(&imp.view_switcher_bar, 0);
+        let action_bar =
+            get_child_by_index::<adw::ViewSwitcherBar, gtk::ActionBar>(&imp.view_switcher_bar, 0);
         let revealer = get_child_by_index::<gtk::ActionBar, gtk::Revealer>(&action_bar, 0);
         let center_box = get_child_by_index::<gtk::Revealer, gtk::CenterBox>(&revealer, 0);
         let view_switcher = get_child_by_index::<gtk::CenterBox, adw::ViewSwitcher>(&center_box, 1);
 
         for child in view_switcher.observe_children().snapshot().iter() {
             let name = child.property::<String>("label");
-            if let Some(button) =  child.downcast_ref::<gtk::Button>() {
+            if let Some(button) = child.downcast_ref::<gtk::Button>() {
                 self.view_stack_button_connection(name, button);
             }
         }
@@ -1144,11 +1156,11 @@ impl Window {
 
     fn view_stack_button_connection(&self, label: String, button: &gtk::Button) {
         let page_enum = match label.as_str() {
-            "Queue" => WindowPage::Queue, 
-            "Albums" => WindowPage::Albums, 
-            "Artists" => WindowPage::Artists, 
-            "Tracks" => WindowPage::Tracks, 
-            "Genres" => WindowPage::Genres, 
+            "Queue" => WindowPage::Queue,
+            "Albums" => WindowPage::Albums,
+            "Artists" => WindowPage::Artists,
+            "Tracks" => WindowPage::Tracks,
+            "Genres" => WindowPage::Genres,
             "Playlists" => WindowPage::Playlists,
             _ => return,
         };
@@ -1163,7 +1175,7 @@ impl Window {
                         }
                     })
                 );
-            },
+            }
             WindowPage::Artists => {
                 button.connect_clicked(
                     clone!(@strong self as this => @default-panic, move |_button| {
@@ -1173,7 +1185,7 @@ impl Window {
                         }
                     })
                 );
-            },
+            }
             WindowPage::Genres => {
                 button.connect_clicked(
                     clone!(@strong self as this => @default-panic, move |_button| {
@@ -1183,7 +1195,7 @@ impl Window {
                         }
                     })
                 );
-            },
+            }
             WindowPage::Playlists => {
                 button.connect_clicked(
                     clone!(@strong self as this => @default-panic, move |_button| {
@@ -1193,7 +1205,7 @@ impl Window {
                         }
                     })
                 );
-            },
+            }
             _ => (),
         }
     }
@@ -1205,8 +1217,10 @@ impl Window {
     fn setup_gactions(&self) {
         let imp = self.imp();
 
-        self.add_simple_action("genre-detail-sort", Some(glib::VariantTy::UINT16), 
-        clone!(@strong imp.genre_detail_page as this => @default-panic, move |_, sort_id| {
+        self.add_simple_action(
+            "genre-detail-sort",
+            Some(glib::VariantTy::UINT16),
+            clone!(@strong imp.genre_detail_page as this => @default-panic, move |_, sort_id| {
                 if let Some(id) = sort_id.and_then(|u| u.get::<u16>()) {
                     let sort_method = match id {
                         0 => SortMethod::Album,
@@ -1218,11 +1232,13 @@ impl Window {
                     };
                     this.set_property("sort-method", sort_method.to_value());
                 }
-            })
+            }),
         );
 
-        self.add_simple_action("artist-detail-sort", Some(glib::VariantTy::UINT16), 
-        clone!(@strong imp.artist_detail_page as this => @default-panic, move |_, sort_id| {
+        self.add_simple_action(
+            "artist-detail-sort",
+            Some(glib::VariantTy::UINT16),
+            clone!(@strong imp.artist_detail_page as this => @default-panic, move |_, sort_id| {
                 if let Some(id) = sort_id.and_then(|u| u.get::<u16>()) {
                     let sort_method = match id {
                         0 => SortMethod::Album,
@@ -1233,11 +1249,13 @@ impl Window {
                     };
                     this.set_property("sort-method", sort_method.to_value());
                 }
-            })
+            }),
         );
 
-        self.add_simple_action("genre-grid-sort", Some(glib::VariantTy::UINT16), 
-        clone!(@strong imp.genre_grid_page as this => @default-panic, move |_, sort_id| {
+        self.add_simple_action(
+            "genre-grid-sort",
+            Some(glib::VariantTy::UINT16),
+            clone!(@strong imp.genre_grid_page as this => @default-panic, move |_, sort_id| {
                 if let Some(id) = sort_id.and_then(|u| u.get::<u16>()) {
                     let sort_method = match id {
                         0 => SortMethod::Genre,
@@ -1247,11 +1265,13 @@ impl Window {
                     };
                     this.set_property("sort-method", sort_method.to_value());
                 }
-            })
+            }),
         );
 
-        self.add_simple_action("artist-grid-sort", Some(glib::VariantTy::UINT16), 
-        clone!(@strong imp.artist_grid_page as this => @default-panic, move |_, sort_id| {
+        self.add_simple_action(
+            "artist-grid-sort",
+            Some(glib::VariantTy::UINT16),
+            clone!(@strong imp.artist_grid_page as this => @default-panic, move |_, sort_id| {
                 if let Some(id) = sort_id.and_then(|u| u.get::<u16>()) {
                     let sort_method = match id {
                         0 => SortMethod::Artist,
@@ -1261,11 +1281,13 @@ impl Window {
                     };
                     this.set_property("sort-method", sort_method.to_value());
                 }
-            })
+            }),
         );
 
-        self.add_simple_action("playlist-grid-sort", Some(glib::VariantTy::UINT16), 
-        clone!(@strong imp.playlist_grid_page as this => @default-panic, move |_, sort_id| {
+        self.add_simple_action(
+            "playlist-grid-sort",
+            Some(glib::VariantTy::UINT16),
+            clone!(@strong imp.playlist_grid_page as this => @default-panic, move |_, sort_id| {
                 if let Some(id) = sort_id.and_then(|u| u.get::<u16>()) {
                     let sort_method = match id {
                         0 => SortMethod::Playlist,
@@ -1276,11 +1298,13 @@ impl Window {
                     };
                     this.set_property("sort-method", sort_method.to_value());
                 }
-            })
+            }),
         );
 
-        self.add_simple_action("track-page-sort", Some(glib::VariantTy::UINT16), 
-        clone!(@strong imp.track_page as this => @default-panic, move |_, sort_id| {
+        self.add_simple_action(
+            "track-page-sort",
+            Some(glib::VariantTy::UINT16),
+            clone!(@strong imp.track_page as this => @default-panic, move |_, sort_id| {
                 if let Some(id) = sort_id.and_then(|u| u.get::<u16>()) {
                     let sort_method = match id {
                         0 => SortMethod::Track,
@@ -1293,11 +1317,13 @@ impl Window {
                     };
                     this.set_property("sort-method", sort_method.to_value());
                 }
-            })
+            }),
         );
 
-        self.add_simple_action("album-grid-sort", Some(glib::VariantTy::UINT16), 
-        clone!(@strong imp.album_grid_page as this => @default-panic, move |_, sort_id| {
+        self.add_simple_action(
+            "album-grid-sort",
+            Some(glib::VariantTy::UINT16),
+            clone!(@strong imp.album_grid_page as this => @default-panic, move |_, sort_id| {
                 if let Some(id) = sort_id.and_then(|u| u.get::<u16>()) {
                     let sort_method = match id {
                         0 => SortMethod::Album,
@@ -1310,26 +1336,34 @@ impl Window {
                     };
                     this.set_property("sort-method", sort_method.to_value());
                 }
-            })
+            }),
         );
 
-        self.add_simple_action("play-album", Some(glib::VariantTy::INT64), 
-        move |_, album_id| {
-            if let Some(id) = album_id.and_then(|u| u.get::<i64>()) {
-                let album = model().album(id).unwrap();
-                player().clear_play_album(album.tracks(), Some(album.title()));
-            }
-        });
+        self.add_simple_action(
+            "play-album",
+            Some(glib::VariantTy::INT64),
+            move |_, album_id| {
+                if let Some(id) = album_id.and_then(|u| u.get::<i64>()) {
+                    let album = model().album(id).unwrap();
+                    player().clear_play_album(album.tracks(), Some(album.title()));
+                }
+            },
+        );
 
-        self.add_simple_action("add-album", Some(glib::VariantTy::INT64), 
-        move |_, album_id| {
-            if let Some(id) = album_id.and_then(|u| u.get::<i64>()) {
-                let album = model().album(id).unwrap();
-                player().add_album(album.tracks());
-            }
-        });
+        self.add_simple_action(
+            "add-album",
+            Some(glib::VariantTy::INT64),
+            move |_, album_id| {
+                if let Some(id) = album_id.and_then(|u| u.get::<i64>()) {
+                    let album = model().album(id).unwrap();
+                    player().add_album(album.tracks());
+                }
+            },
+        );
 
-        self.add_simple_action("create-playlist-from-album", Some(glib::VariantTy::INT64), 
+        self.add_simple_action(
+            "create-playlist-from-album",
+            Some(glib::VariantTy::INT64),
             clone!(@strong self as this => @default-panic, move |_, album_id| {
                 if let Some(id) = album_id.and_then(|u| u.get::<i64>()) {
                     let album = model().album(id).unwrap();
@@ -1337,10 +1371,12 @@ impl Window {
                     save_dialog.set_transient_for(Some(&this));
                     save_dialog.show();
                 }
-            })
+            }),
         );
 
-        self.add_simple_action("add-album-to-playlist", Some(glib::VariantTy::INT64), 
+        self.add_simple_action(
+            "add-album-to-playlist",
+            Some(glib::VariantTy::INT64),
             clone!(@strong self as this => @default-panic, move |_, album_id| {
                 if let Some(id) = album_id.and_then(|u| u.get::<i64>()) {
                     let album = model().album(id).unwrap();
@@ -1348,161 +1384,190 @@ impl Window {
                     dialog.set_transient_for(Some(&this));
                     dialog.show();
                 }
-            })
+            }),
         );
-        
 
-        self.add_simple_action("go-to-album-detail", Some(glib::VariantTy::INT64), 
+        self.add_simple_action(
+            "go-to-album-detail",
+            Some(glib::VariantTy::INT64),
             clone!(@strong self as this => @default-panic, move |_, album_id| {
                 if let Some(id) = album_id.and_then(|u| u.get::<i64>()) {
                     this.album_selected_go_to_detail(id);
                 }
-            })
+            }),
         );
 
-
-        self.add_simple_action("go-to-artist-detail", Some(glib::VariantTy::INT64), 
+        self.add_simple_action(
+            "go-to-artist-detail",
+            Some(glib::VariantTy::INT64),
             clone!(@strong self as this => @default-panic, move |_, artist_id| {
                 if let Some(id) = artist_id.and_then(|u| u.get::<i64>()) {
                     this.switch_stack_page(WindowPage::Artists, true);
                     this.artist_selected_go_to_detail(id);
                 }
-            })
+            }),
         );
 
-        self.add_simple_action("go-to-playlist-detail", Some(glib::VariantTy::INT64), 
-        clone!(@strong self as this => @default-panic, move |_, artist_id| {
-            if let Some(id) = artist_id.and_then(|u| u.get::<i64>()) {
-                this.switch_stack_page(WindowPage::Playlists, true);
-                this.playlist_selected_go_to_detail(id);
-            }
-        })
-    );
-
+        self.add_simple_action(
+            "go-to-playlist-detail",
+            Some(glib::VariantTy::INT64),
+            clone!(@strong self as this => @default-panic, move |_, artist_id| {
+                if let Some(id) = artist_id.and_then(|u| u.get::<i64>()) {
+                    this.switch_stack_page(WindowPage::Playlists, true);
+                    this.playlist_selected_go_to_detail(id);
+                }
+            }),
+        );
 
         // self.create_action('go-to-queue', self.action_go_to_queue)
-        self.add_simple_action("go-to-queue", None, 
+        self.add_simple_action(
+            "go-to-queue",
+            None,
             clone!(@strong self as this => @default-panic, move |_, _| {
                 this.switch_stack_page(WindowPage::Queue, true);
-            })
+            }),
         );
 
         // self.create_action_array('play-album-from-track', self.action_play_album_from_track)
-        self.add_simple_action("play-album-from-track", Some(glib::VariantType::new_array(glib::VariantTy::INT64).as_ref()), 
+        self.add_simple_action(
+            "play-album-from-track",
+            Some(glib::VariantType::new_array(glib::VariantTy::INT64).as_ref()),
             move |_, array| {
                 if let Some(array) = array.and_then(|u| u.get::<Vec<i64>>()) {
                     let album_id = array[0];
                     let disc_no = array[1];
                     let track_no = array[2];
-                    let tracks = model().album(album_id).unwrap().disc(disc_no).unwrap().values().cloned().collect();
+                    let tracks = model()
+                        .album(album_id)
+                        .unwrap()
+                        .disc(disc_no)
+                        .unwrap()
+                        .values()
+                        .cloned()
+                        .collect();
                     let player = player();
                     player.clear_play_album(tracks, None);
                     player.go_to_playlist_position(track_no as u64);
                 }
-            }
+            },
         );
 
         // self.create_action_parameter('play-track', self.action_play_track)
-        self.add_simple_action("play-track", Some(glib::VariantTy::INT64), 
+        self.add_simple_action(
+            "play-track",
+            Some(glib::VariantTy::INT64),
             move |_, track_id| {
                 if let Some(id) = track_id.and_then(|u| u.get::<i64>()) {
                     let track = model().track(id).unwrap();
                     player().clear_play_track(track);
                 }
-            }
+            },
         );
 
-
         // self.create_action_parameter('add-track-to-queue', self.action_add_track_to_queue)
-        self.add_simple_action("add-track-to-queue", Some(glib::VariantTy::INT64), 
+        self.add_simple_action(
+            "add-track-to-queue",
+            Some(glib::VariantTy::INT64),
             move |_, track_id| {
                 if let Some(id) = track_id.and_then(|u| u.get::<i64>()) {
                     let track = model().track(id).unwrap();
                     player().add_track(track);
                 }
-            }
+            },
         );
 
         // self.create_action_parameter('create-playlist-from-track', self.action_create_playlist_from_track)
-        self.add_simple_action("create-playlist-from-track", Some(glib::VariantTy::INT64), 
+        self.add_simple_action(
+            "create-playlist-from-track",
+            Some(glib::VariantTy::INT64),
             clone!(@strong self as this => @default-panic, move |_, track_id| {
                 if let Some(id) = track_id.and_then(|u| u.get::<i64>()) {
                     let save_dialog = SavePlaylistDialog::new(vec![id]);
                     save_dialog.set_transient_for(Some(&this));
                     save_dialog.show();
                 }
-            })
+            }),
         );
 
         // self.create_action_parameter('add-track-to-playlist', self.action_add_track_to_playlist)
-        self.add_simple_action("add-track-to-playlist", Some(glib::VariantTy::INT64), 
+        self.add_simple_action(
+            "add-track-to-playlist",
+            Some(glib::VariantTy::INT64),
             clone!(@strong self as this => @default-panic, move |_, track_id| {
                 if let Some(id) = track_id.and_then(|u| u.get::<i64>()) {
                     let dialog = AddToPlaylistDialog::new(vec![id]);
                     dialog.set_transient_for(Some(&this));
                     dialog.show();
                 }
-            })
+            }),
         );
 
-
-
-
         // self.create_action_parameter('remove-track-from-queue', self.action_remove_track_from_queue)
-        self.add_simple_action("remove-track-from-queue", Some(glib::VariantTy::UINT64), 
+        self.add_simple_action(
+            "remove-track-from-queue",
+            Some(glib::VariantTy::UINT64),
             move |_, position| {
                 if let Some(position_to_remove) = position.and_then(|u| u.get::<u64>()) {
                     player().queue().remove_track(position_to_remove as usize);
                 }
-            }
+            },
         );
 
         // self.create_action_parameter('play-playlist', self.action_play_playlist)
-        self.add_simple_action("play-playlist", Some(glib::VariantTy::INT64), 
+        self.add_simple_action(
+            "play-playlist",
+            Some(glib::VariantTy::INT64),
             move |_, playlist_id| {
                 if let Some(id) = playlist_id.and_then(|u| u.get::<i64>()) {
                     let playlist = model().playlist(id).unwrap();
                     player().clear_play_album(playlist.tracks(), Some(playlist.title()));
                 }
-            }
+            },
         );
-        
+
         // self.create_action_parameter('add-playlist-to-queue', self.action_add_playlist_to_queue)
-        self.add_simple_action("add-playlist-to-queue", Some(glib::VariantTy::INT64), 
+        self.add_simple_action(
+            "add-playlist-to-queue",
+            Some(glib::VariantTy::INT64),
             move |_, playlist_id| {
                 if let Some(id) = playlist_id.and_then(|u| u.get::<i64>()) {
                     let playlist = model().playlist(id).unwrap();
                     player().add_album(playlist.tracks());
                 }
-            }
+            },
         );
 
         // self.create_action_parameter('duplicate-playlist', self.action_duplicate_playlist)
-        self.add_simple_action("duplicate-playlist", Some(glib::VariantTy::INT64), 
-        clone!(@strong self as this => @default-panic, move |_, playlist_id| {
+        self.add_simple_action(
+            "duplicate-playlist",
+            Some(glib::VariantTy::INT64),
+            clone!(@strong self as this => @default-panic, move |_, playlist_id| {
                 if let Some(id) = playlist_id.and_then(|u| u.get::<i64>()) {
                     let playlist = model().playlist(id).unwrap();
                     let dialog = DuplicatePlaylistDialog::new(playlist);
                     dialog.set_transient_for(Some(&this));
                     dialog.show();
                 }
-            })
+            }),
         );
 
         // self.create_action_parameter('delete-playlist', self.action_delete_playlist)
-        self.add_simple_action("delete-playlist", Some(glib::VariantTy::INT64), 
-        clone!(@strong self as this => @default-panic, move |_, playlist_id| {
+        self.add_simple_action(
+            "delete-playlist",
+            Some(glib::VariantTy::INT64),
+            clone!(@strong self as this => @default-panic, move |_, playlist_id| {
                 if let Some(id) = playlist_id.and_then(|u| u.get::<i64>()) {
                     let dialog = DeletePlaylistDialog::new(id);
                     dialog.set_transient_for(Some(&this));
                     dialog.show();
                 }
-            })
+            }),
         );
 
-
         // self.create_action_array('play-playlist-from-track', self.action_play_playlist_from_track)
-        self.add_simple_action("play-playlist-from-track", Some(glib::VariantType::new_array(glib::VariantTy::INT64).as_ref()), 
+        self.add_simple_action(
+            "play-playlist-from-track",
+            Some(glib::VariantType::new_array(glib::VariantTy::INT64).as_ref()),
             move |_, array| {
                 if let Some(array) = array.and_then(|u| u.get::<Vec<i64>>()) {
                     let playlist_id = array[0];
@@ -1512,73 +1577,67 @@ impl Window {
                     player.clear_play_album(tracks, None);
                     player.go_to_playlist_position(track_no as u64);
                 }
-            }
+            },
         );
 
         // self.create_action('save-playlist', self.action_create_playlist_from_queue)
-        self.add_simple_action("save-playlist", None, 
+        self.add_simple_action(
+            "save-playlist",
+            None,
             clone!(@strong self as this => @default-panic, move |_, _| {
                 let save_dialog = SavePlaylistDialog::new(player().queue().track_ids());
                 save_dialog.set_transient_for(Some(&this));
                 save_dialog.show();
-            })
+            }),
         );
 
         // self.create_action('add-queue-to-playlist', self.action_add_queue_to_playlist)
-        self.add_simple_action("add-queue-to-playlist", None, 
+        self.add_simple_action(
+            "add-queue-to-playlist",
+            None,
             clone!(@strong self as this => @default-panic, move |_, _| {
                 let save_dialog = AddToPlaylistDialog::new(player().queue().track_ids());
                 save_dialog.set_transient_for(Some(&this));
                 save_dialog.show();
-            })
+            }),
         );
 
         // self.create_action('clear-queue', self.action_clear_queue)
-        self.add_simple_action("end-queue", None, 
-            move |_, _| {
-                player().queue().end_queue();
-            }
-        );
+        self.add_simple_action("end-queue", None, move |_, _| {
+            player().queue().end_queue();
+        });
 
-        self.add_simple_action("toggle-play-pause", None, 
-        move |_, _| {
-                player().toggle_play_pause();
-            }
-        );
+        self.add_simple_action("toggle-play-pause", None, move |_, _| {
+            player().toggle_play_pause();
+        });
 
-        self.add_simple_action("prev", None, 
-        move |_, _| {
-                player().prev();
-            }
-        );
+        self.add_simple_action("prev", None, move |_, _| {
+            player().prev();
+        });
 
-        self.add_simple_action("next", None, 
-        move |_, _| {
-                player().next();
-            }
-        );
+        self.add_simple_action("next", None, move |_, _| {
+            player().next();
+        });
 
-        self.add_simple_action("next", None, 
-        move |_, _| {
-                player().next();
-            }
-        );
+        self.add_simple_action("next", None, move |_, _| {
+            player().next();
+        });
 
-        
-        self.add_simple_action("skip-queue-to-track", Some(glib::VariantTy::UINT64), 
+        self.add_simple_action(
+            "skip-queue-to-track",
+            Some(glib::VariantTy::UINT64),
             move |_, playlist_position| {
                 if let Some(pos) = playlist_position.and_then(|u| u.get::<u64>()) {
                     player().go_to_playlist_position(pos);
                 }
-            }
+            },
         );
-
     }
 
-
-    pub fn add_simple_action<F>(&self, name: &str, param: Option<&glib::VariantTy>, f: F) 
+    pub fn add_simple_action<F>(&self, name: &str, param: Option<&glib::VariantTy>, f: F)
     where
-    F: Fn(&gio::SimpleAction, Option<&glib::Variant>) + 'static, {
+        F: Fn(&gio::SimpleAction, Option<&glib::Variant>) + 'static,
+    {
         let action = gio::SimpleAction::new(name, param);
         action.set_enabled(true);
         action.connect_activate(f);
@@ -1621,13 +1680,24 @@ impl Window {
             5 => SortMethod::TrackCount,
             _ => SortMethod::Album,
         };
-        imp.album_grid_page.set_property("sort-method", sort_method.to_value());
+        imp.album_grid_page
+            .set_property("sort-method", sort_method.to_value());
 
-        imp.settings.bind("album-grid-display-labels", &*imp.album_grid_page, "display-labels-default")
+        imp.settings
+            .bind(
+                "album-grid-display-labels",
+                &*imp.album_grid_page,
+                "display-labels-default",
+            )
             .flags(gio::SettingsBindFlags::GET)
             .build();
 
-        imp.settings.bind("album-grid-disable-flap", &*imp.album_grid_page, "disable-flap")
+        imp.settings
+            .bind(
+                "album-grid-disable-flap",
+                &*imp.album_grid_page,
+                "disable-flap",
+            )
             .flags(gio::SettingsBindFlags::GET)
             .build();
 
@@ -1659,16 +1729,26 @@ impl Window {
             5 => SortMethod::Duration,
             _ => SortMethod::Track,
         };
-        imp.track_page.set_property("sort-method", sort_method.to_value());
+        imp.track_page
+            .set_property("sort-method", sort_method.to_value());
 
-        imp.settings.bind("track-page-display-labels", &*imp.track_page, "display-labels-default")
+        imp.settings
+            .bind(
+                "track-page-display-labels",
+                &*imp.track_page,
+                "display-labels-default",
+            )
             .flags(gio::SettingsBindFlags::GET)
             .build();
 
-        imp.settings.bind("track-page-display-search", &*imp.track_page, "search-mode-default")
+        imp.settings
+            .bind(
+                "track-page-display-search",
+                &*imp.track_page,
+                "search-mode-default",
+            )
             .flags(gio::SettingsBindFlags::GET)
             .build();
-
 
         // PLAYLIST GRID
         imp.settings.connect_changed(
@@ -1694,7 +1774,8 @@ impl Window {
             3 => SortMethod::TrackCount,
             _ => SortMethod::LastModified,
         };
-        imp.playlist_grid_page.set_property("sort-method", sort_method.to_value());
+        imp.playlist_grid_page
+            .set_property("sort-method", sort_method.to_value());
 
         // ARTIST GRID
         imp.settings.connect_changed(
@@ -1718,7 +1799,8 @@ impl Window {
             2 => SortMethod::TrackCount,
             _ => SortMethod::Artist,
         };
-        imp.artist_grid_page.set_property("sort-method", sort_method.to_value());
+        imp.artist_grid_page
+            .set_property("sort-method", sort_method.to_value());
 
         // GENRE GRID
         imp.settings.connect_changed(
@@ -1742,7 +1824,8 @@ impl Window {
             2 => SortMethod::TrackCount,
             _ => SortMethod::Genre,
         };
-        imp.genre_grid_page.set_property("sort-method", sort_method.to_value());
+        imp.genre_grid_page
+            .set_property("sort-method", sort_method.to_value());
 
         // ARTIST DETAIL
         imp.settings.connect_changed(
@@ -1768,7 +1851,8 @@ impl Window {
             3 => SortMethod::TrackCount,
             _ => SortMethod::Album,
         };
-        imp.artist_detail_page.set_property("sort-method", sort_method.to_value());
+        imp.artist_detail_page
+            .set_property("sort-method", sort_method.to_value());
 
         // GENRE DETAIL
         imp.settings.connect_changed(
@@ -1796,7 +1880,8 @@ impl Window {
             4 => SortMethod::TrackCount,
             _ => SortMethod::Album,
         };
-        imp.genre_detail_page.set_property("sort-method", sort_method.to_value());
+        imp.genre_detail_page
+            .set_property("sort-method", sort_method.to_value());
 
         // QUEUE OPEN BY DEFAULT
         imp.settings.connect_changed(
@@ -1823,27 +1908,22 @@ impl Window {
                 }
             }),
         );
-        
-        imp.settings.connect_changed(
-                Some("default-volume"),
-                move |settings, _name| {
-                    let volume = settings.double("default-volume");
-                    player().set_volume(volume);
-                },
-        );
-    
-        imp.settings.connect_changed(
-            Some("shuffle-mode-loop"),
-            move |settings, _name| {
+
+        imp.settings
+            .connect_changed(Some("default-volume"), move |settings, _name| {
+                let volume = settings.double("default-volume");
+                player().set_volume(volume);
+            });
+
+        imp.settings
+            .connect_changed(Some("shuffle-mode-loop"), move |settings, _name| {
                 debug!("shuffle mode changed");
                 let mode = settings.boolean("shuffle-mode-loop");
                 player().queue().set_shuffle_mode(mode);
-            }
-        );
+            });
 
-        imp.settings.connect_changed(
-            Some("discord-rich-presence"),
-            move |settings, _name| {
+        imp.settings
+            .connect_changed(Some("discord-rich-presence"), move |settings, _name| {
                 let discord_enabled = settings.boolean("discord-rich-presence");
                 let player = player();
                 player.discord_enabled.set(discord_enabled);
@@ -1852,29 +1932,24 @@ impl Window {
                     send!(sender, DiscordAction::Reconnect);
                 } else {
                     send!(sender, DiscordAction::Close);
-                }              
-            },
-        );
+                }
+            });
 
-        imp.settings.connect_changed(
-            Some("last-fm-enabled"),
-            move |settings, _name| {
+        imp.settings
+            .connect_changed(Some("last-fm-enabled"), move |settings, _name| {
                 let enabled = settings.boolean("last-fm-enabled");
                 let player = player();
                 player.lastfm_enabled.set(enabled);
                 let sender = player.lastfm_sender.clone();
-                send!(sender, LastFmAction::Enabled(enabled));            
-            },
-        );
+                send!(sender, LastFmAction::Enabled(enabled));
+            });
 
-        imp.settings.connect_changed(
-            Some("play-commit-threshold"),
-            move |settings, _name| {
+        imp.settings
+            .connect_changed(Some("play-commit-threshold"), move |settings, _name| {
                 let threshold = settings.double("play-commit-threshold");
                 let player = player();
-                player.commit_threshold.set(threshold);         
-            },
-        );
+                player.commit_threshold.set(threshold);
+            });
     }
 
     fn set_window_size(&self) {
@@ -1899,4 +1974,3 @@ impl Window {
         _ = imp.settings.set_boolean("window-maximized", maximized);
     }
 }
-

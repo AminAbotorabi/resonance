@@ -6,10 +6,15 @@
 
 use glib::prelude::ToVariant;
 use gtk::subclass::prelude::*;
-use gtk::{glib, gio};
+use gtk::{gio, glib};
 
-use std::{cell::RefCell, cell::Cell, rc::Rc, collections::{HashSet, HashMap}};
 use regex::Regex;
+use std::{
+    cell::Cell,
+    cell::RefCell,
+    collections::{HashMap, HashSet},
+    rc::Rc,
+};
 
 use super::track::Track;
 
@@ -59,27 +64,44 @@ glib::wrapper! {
 }
 
 impl Album {
-    pub fn new(id: i64, title: String, album_artist: String, artist_id: i64, date: String, genre: String) -> Album {
+    pub fn new(
+        id: i64,
+        title: String,
+        album_artist: String,
+        artist_id: i64,
+        date: String,
+        genre: String,
+    ) -> Album {
         let album: Album = glib::Object::builder::<Album>().build();
         album.load_info(id, title, album_artist, artist_id, date, genre);
         album
     }
 
-    pub fn load_info(&self, id: i64, title: String, album_artist: String, artist_id: i64, date: String, genre: String) {
+    pub fn load_info(
+        &self,
+        id: i64,
+        title: String,
+        album_artist: String,
+        artist_id: i64,
+        date: String,
+        genre: String,
+    ) {
         let imp = self.imp();
-        
+
         let re = Regex::new(r"^(the|a|an)\s+").unwrap();
-        
+
         let lowercase_title = title.to_lowercase();
         let stripped_title: std::borrow::Cow<str> = re.replace(&lowercase_title, "");
 
-        let lowercase_artist= album_artist.to_lowercase();
+        let lowercase_artist = album_artist.to_lowercase();
         let stripped_artist = re.replace(&lowercase_artist, "");
 
         imp.sort_title.replace(format!("{}", stripped_title));
         imp.sort_artist.replace(format!("{}", stripped_artist));
-        imp.sort_string.replace(format!("{} {}", stripped_title, stripped_artist));
-        imp.search_string.replace(format!("{} {}", title, album_artist));
+        imp.sort_string
+            .replace(format!("{} {}", stripped_title, stripped_artist));
+        imp.search_string
+            .replace(format!("{} {}", title, album_artist));
 
         imp.id.set(id);
         imp.title.replace(title);
@@ -99,7 +121,11 @@ impl Album {
             let duration = imp.total_duration.get() + track.duration();
             imp.total_duration.set(duration);
             //debug!("ADDED {} to {}", track.title(), self.title.borrow());
-            imp.discs.borrow_mut().entry(disc_number).or_default().insert(track.track_number(), track.clone());
+            imp.discs
+                .borrow_mut()
+                .entry(disc_number)
+                .or_default()
+                .insert(track.track_number(), track.clone());
         }
     }
 
@@ -120,7 +146,7 @@ impl Album {
     }
 
     pub fn cover_art_id(&self) -> Option<i64> {
-            self.imp().cover_art_id.get()
+        self.imp().cover_art_id.get()
     }
 
     pub fn id(&self) -> i64 {
@@ -193,10 +219,10 @@ impl Album {
     pub fn track_index(&self, track_number: i64, disc_number: i64) -> usize {
         let disc_map = self.discs();
         let mut index = 0;
-        for i in 0..disc_number-1 {
+        for i in 0..disc_number - 1 {
             index += disc_map[&i].len();
         }
-        index += track_number as usize - 1; 
+        index += track_number as usize - 1;
         index
     }
 
@@ -226,42 +252,65 @@ impl Album {
         let menu = gio::Menu::new();
 
         let menu_item = gio::MenuItem::new(Some(&format!("Play «{}»", self.title())), None);
-        menu_item.set_action_and_target_value(Some("win.play-album"), Some(&imp.id.get().to_variant()));
+        menu_item
+            .set_action_and_target_value(Some("win.play-album"), Some(&imp.id.get().to_variant()));
         menu.append_item(&menu_item);
 
         let menu_item = gio::MenuItem::new(Some(&format!("Add «{}» to Queue", self.title())), None);
-        menu_item.set_action_and_target_value(Some("win.add-album"), Some(&imp.id.get().to_variant()));
+        menu_item
+            .set_action_and_target_value(Some("win.add-album"), Some(&imp.id.get().to_variant()));
         menu.append_item(&menu_item);
 
         imp.menu.append_section(Some("Play"), &menu);
 
         let menu = gio::Menu::new();
 
-        let menu_item = gio::MenuItem::new(Some(&format!("Go to Album «{}» Detail", self.title())), None);
-        menu_item.set_action_and_target_value(Some("win.go-to-album-detail"), Some(&imp.id.get().to_variant()));
+        let menu_item = gio::MenuItem::new(
+            Some(&format!("Go to Album «{}» Detail", self.title())),
+            None,
+        );
+        menu_item.set_action_and_target_value(
+            Some("win.go-to-album-detail"),
+            Some(&imp.id.get().to_variant()),
+        );
         menu.append_item(&menu_item);
 
-        let menu_item = gio::MenuItem::new(Some(&format!("Go to Artist {} Detail", self.artist())), None);
-        menu_item.set_action_and_target_value(Some("win.go-to-artist-detail"), Some(&imp.artist_id.get().to_variant()));
+        let menu_item = gio::MenuItem::new(
+            Some(&format!("Go to Artist {} Detail", self.artist())),
+            None,
+        );
+        menu_item.set_action_and_target_value(
+            Some("win.go-to-artist-detail"),
+            Some(&imp.artist_id.get().to_variant()),
+        );
         menu.append_item(&menu_item);
 
         imp.menu.append_section(Some("Navigate"), &menu);
 
         let menu = gio::Menu::new();
-        
-        let menu_item = gio::MenuItem::new(Some(&format!("Create Playlist from «{}»", self.title())), None);
-        menu_item.set_action_and_target_value(Some("win.create-playlist-from-album"), Some(&imp.id.get().to_variant()));
+
+        let menu_item = gio::MenuItem::new(
+            Some(&format!("Create Playlist from «{}»", self.title())),
+            None,
+        );
+        menu_item.set_action_and_target_value(
+            Some("win.create-playlist-from-album"),
+            Some(&imp.id.get().to_variant()),
+        );
         menu.append_item(&menu_item);
 
-        let menu_item = gio::MenuItem::new(Some(&format!("Add «{}» to Playlist", self.title())), None);
-        menu_item.set_action_and_target_value(Some("win.add-album-to-playlist"), Some(&imp.id.get().to_variant()));
+        let menu_item =
+            gio::MenuItem::new(Some(&format!("Add «{}» to Playlist", self.title())), None);
+        menu_item.set_action_and_target_value(
+            Some("win.add-album-to-playlist"),
+            Some(&imp.id.get().to_variant()),
+        );
         menu.append_item(&menu_item);
 
         imp.menu.append_section(Some("Playlist"), &menu);
     }
 
-    pub fn menu_model(&self)-> &gio::Menu {
+    pub fn menu_model(&self) -> &gio::Menu {
         &self.imp().menu
     }
 }
-    

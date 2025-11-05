@@ -1,13 +1,13 @@
-pub mod window;
-pub mod preferences_window;
-pub mod art;
-pub mod pages;
-mod dialog;
 mod album_card;
+pub mod art;
 mod control_bar;
+mod dialog;
 mod disc_button;
 mod generic_flowbox_child;
+pub mod pages;
+pub mod preferences_window;
 mod scale;
 mod track_entry;
 mod volume_scale;
 mod volume_widget;
+pub mod window;

@@ -45,10 +45,10 @@ glib::wrapper! {
     pub struct PlaylistDetailTrackItem(ObjectSubclass<imp::PlaylistDetailTrackItemPriv>);
 }
 
-
 impl PlaylistDetailTrackItem {
     pub fn new(playlist_id: i64, playlist_entry: Rc<PlaylistEntry>) -> PlaylistDetailTrackItem {
-        let track_item: PlaylistDetailTrackItem = glib::Object::builder::<PlaylistDetailTrackItem>().build();
+        let track_item: PlaylistDetailTrackItem =
+            glib::Object::builder::<PlaylistDetailTrackItem>().build();
         track_item.load(playlist_entry, playlist_id);
         track_item
     }
@@ -58,9 +58,15 @@ impl PlaylistDetailTrackItem {
         imp.playlist_id.set(id);
         imp.playlist_entry_id.set(playlist_entry.id());
         imp.playlist_position.set(playlist_entry.position());
-        imp.original_playlist_position.set(playlist_entry.position());
+        imp.original_playlist_position
+            .set(playlist_entry.position());
         let track = playlist_entry.track();
-        imp.search_string.replace(format!("{} {} {}", track.title(), track.album(), track.artist()));
+        imp.search_string.replace(format!(
+            "{} {} {}",
+            track.title(),
+            track.album(),
+            track.artist()
+        ));
         imp.playlist_entry.replace(Some(playlist_entry));
     }
 
@@ -71,7 +77,7 @@ impl PlaylistDetailTrackItem {
     pub fn track(&self) -> Rc<Track> {
         self.playlist_entry().track()
     }
-    
+
     pub fn playlist_entry_id(&self) -> i64 {
         self.imp().playlist_entry_id.get()
     }
@@ -85,7 +91,9 @@ impl PlaylistDetailTrackItem {
     }
 
     pub fn reset_position(&self) {
-        self.imp().playlist_position.set(self.imp().original_playlist_position.get())
+        self.imp()
+            .playlist_position
+            .set(self.imp().original_playlist_position.get())
     }
 
     pub fn position(&self) -> i64 {
@@ -95,6 +103,4 @@ impl PlaylistDetailTrackItem {
     pub fn search_string(&self) -> String {
         self.imp().search_string.borrow().clone()
     }
-
 }
-    

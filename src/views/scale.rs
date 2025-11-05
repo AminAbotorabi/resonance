@@ -6,16 +6,16 @@
 
 use gtk::{gdk, glib, glib::clone, graphene, gsk, prelude::*, subclass::prelude::*};
 
-use std::{cell::Cell, cell::RefCell};
-use std::time::Duration;
 use log::error;
+use std::time::Duration;
+use std::{cell::Cell, cell::RefCell};
 
 use crate::player::gst_backend::BackendPlaybackState;
 use crate::util::player;
 
 mod imp {
     use super::*;
-    use glib::{Value, ParamSpec, ParamSpecUInt64, ParamSpecFloat};
+    use glib::{ParamSpec, ParamSpecFloat, ParamSpecUInt64, Value};
     use once_cell::sync::Lazy;
 
     #[derive(Debug, Default)]
@@ -68,8 +68,16 @@ mod imp {
         fn properties() -> &'static [ParamSpec] {
             static PROPERTIES: Lazy<Vec<ParamSpec>> = Lazy::new(|| {
                 vec![
-                    ParamSpecUInt64::builder("position").minimum(0).maximum(u64::MAX).read_only().build(),
-                    ParamSpecUInt64::builder("time-position").minimum(0).maximum(u64::MAX).read_only().build(),
+                    ParamSpecUInt64::builder("position")
+                        .minimum(0)
+                        .maximum(u64::MAX)
+                        .read_only()
+                        .build(),
+                    ParamSpecUInt64::builder("time-position")
+                        .minimum(0)
+                        .maximum(u64::MAX)
+                        .read_only()
+                        .build(),
                     ParamSpecFloat::builder("radius").build(),
                 ]
             });
@@ -81,7 +89,7 @@ mod imp {
                 "radius" => {
                     let radius = value.get().expect("The value needs to be of type `f32`.");
                     self.radius.set(radius);
-                },
+                }
                 _ => unimplemented!(),
             }
         }
@@ -98,7 +106,7 @@ mod imp {
     }
 
     impl WidgetImpl for ScalePriv {
-        fn measure(&self, orientation: gtk::Orientation, _for_size: i32,) -> (i32, i32, i32, i32) {
+        fn measure(&self, orientation: gtk::Orientation, _for_size: i32) -> (i32, i32, i32, i32) {
             if orientation == gtk::Orientation::Horizontal {
                 (100, 500, -1, -1)
             } else {
@@ -110,7 +118,7 @@ mod imp {
             //let color = gdk::RGBA::new(0.0, 0.0, 0.0, 1.0);
 
             let width = self.obj().width() as f32;
-            let height = self.obj().height() as f32;  
+            let height = self.obj().height() as f32;
 
             let default_height = 9.0;
             let default_y = if height > default_height {
@@ -124,7 +132,7 @@ mod imp {
             let background_color = "#2c2d2d";
 
             let bg_color = gdk::RGBA::parse(background_color).ok().unwrap();
-            
+
             let rect = graphene::Rect::new(0.0, default_y, width, default_height);
             let rounded_rect = gsk::RoundedRect::from_rect(rect, self.radius.get());
 
@@ -132,7 +140,8 @@ mod imp {
             snapshot.append_color(&bg_color, &rect);
 
             let prog_color = gdk::RGBA::parse(progress_color).ok().unwrap();
-            let progress_rect = graphene::Rect::new(0.0, default_y, self.white_width.get(), default_height);
+            let progress_rect =
+                graphene::Rect::new(0.0, default_y, self.white_width.get(), default_height);
             snapshot.append_color(&prog_color, &progress_rect);
 
             if self.suggested_visible.get() {
@@ -148,17 +157,23 @@ mod imp {
                 } else {
                     if self.suggest_pos.get() < width {
                         let diff_rect = graphene::Rect::new(
-                            self.white_width.get(), default_y, self.suggest_pos.get()-self.white_width.get(), default_height 
+                            self.white_width.get(),
+                            default_y,
+                            self.suggest_pos.get() - self.white_width.get(),
+                            default_height,
                         );
                         snapshot.append_color(&select_color, &diff_rect);
                     } else {
                         let diff_rect = graphene::Rect::new(
-                            self.white_width.get(), default_y, width-self.white_width.get(), default_height
+                            self.white_width.get(),
+                            default_y,
+                            width - self.white_width.get(),
+                            default_height,
                         );
                         snapshot.append_color(&select_color, &diff_rect);
                     }
                 }
-            } 
+            }
             snapshot.pop();
 
             // let circle_size = 15.0;
@@ -186,7 +201,7 @@ impl Scale {
 
     pub fn initialize(&self) {
         let imp = self.imp();
-        
+
         //debug!("SCALE INITIALIZE {}", imp.id.borrow());
 
         if imp.init.get() {
@@ -196,7 +211,7 @@ impl Scale {
         imp.init.set(true);
 
         self.bind_state();
-        
+
         self.set_hexpand(true);
         self.set_vexpand(true);
         self.set_margin_start(5);
@@ -213,7 +228,7 @@ impl Scale {
                 this.remove_timeout();
                 this.imp().old_scale_value.set(this.imp().white_width.get() as f64);
                 this.imp().scrub_mode.set(true);
-            })
+            }),
         );
         ctrl_click.connect_released(
             clone!(@strong self as this => move |_gesture, _n_press, x, _y| {
@@ -224,43 +239,37 @@ impl Scale {
                     this.set_position(time_position as f64);
                     player.set_track_position(time_position);
                     this.imp().old_scale_value.set(x);
-                    
+
                     // if player.state().playback_state() !=    BackendPlaybackState::Playing {
                     //     this.set_position(time_position as f64);
                     // }
-                    
+
                     this.update_timeout();
-                
+
                 }
                 this.imp().scrub_mode.set(false);
-            })
+            }),
         );
         self.add_controller(ctrl_click);
 
         let ctrl = gtk::EventControllerMotion::new();
-        ctrl.connect_enter(
-            clone!(@strong self as this => move |_controller, _x, _y| {
-                this.imp().suggested_visible.set(true);
-                this.queue_draw()
-            })
-        );
-        ctrl.connect_leave(
-            clone!(@strong self as this => move |_controller| {
-                this.imp().suggested_visible.set(false);
-                this.queue_draw()
-            })
-        );
-        ctrl.connect_motion(
-            clone!(@strong self as this => move |_controller, x, _y| {
-                if x > 0.0 {
-                    if this.imp().scrub_mode.get() {
-                        this.scrub_time_position(x)
-                    }
-                    this.imp().suggest_pos.set(x as f32);
-                    this.queue_draw()
+        ctrl.connect_enter(clone!(@strong self as this => move |_controller, _x, _y| {
+            this.imp().suggested_visible.set(true);
+            this.queue_draw()
+        }));
+        ctrl.connect_leave(clone!(@strong self as this => move |_controller| {
+            this.imp().suggested_visible.set(false);
+            this.queue_draw()
+        }));
+        ctrl.connect_motion(clone!(@strong self as this => move |_controller, x, _y| {
+            if x > 0.0 {
+                if this.imp().scrub_mode.get() {
+                    this.scrub_time_position(x)
                 }
-            })
-        );
+                this.imp().suggest_pos.set(x as f32);
+                this.queue_draw()
+            }
+        }));
         self.add_controller(ctrl);
     }
 
@@ -311,11 +320,12 @@ impl Scale {
             }
             BackendPlaybackState::Playing => {
                 self.set_sensitive(true);
-                
+
                 //self.update_position_callback();
 
                 let timeout_duration = Duration::from_millis(2);
-                let _source_id = glib::timeout_add_local(timeout_duration,
+                let _source_id = glib::timeout_add_local(
+                    timeout_duration,
                     clone!(@strong self as this => @default-return Continue(false) , move || {
                         // debug!("update timeout from playback state == playing {}", this.imp().id.borrow());
                         this.update_timeout();
@@ -330,34 +340,33 @@ impl Scale {
         }
     }
 
-
     fn update_timeout(&self) {
         let imp = self.imp();
-        if let Some(duration)  = player().backend.duration() {
-      
+        if let Some(duration) = player().backend.duration() {
             let mut width = self.allocated_width();
             if width <= 0 {
                 width = 500;
             }
-            
+
             let timeout_ms = (1000.0 * duration) / width as f64;
             let timeout_duration = Duration::from_millis(timeout_ms as u64);
-            
+
             if !imp.timeout.borrow().as_ref().is_none() {
                 self.remove_timeout();
             }
 
-            imp.timeout.replace(Some(glib::timeout_add_local(timeout_duration,
+            imp.timeout.replace(Some(glib::timeout_add_local(
+                timeout_duration,
                 clone!(@strong self as this => @default-return glib::Continue(false) , move || {
                     // debug!("timeout -> update_position_from_timeout {}", this.imp().id.borrow());
                     this.update_position_from_timeout()
                 }),
             )));
-            
         } else {
             error!("no duration yet");
             let timeout_duration = Duration::from_millis(5);
-            let _source_id = glib::timeout_add_local(timeout_duration,
+            let _source_id = glib::timeout_add_local(
+                timeout_duration,
                 clone!(@strong self as this => @default-return Continue(false) , move || {
                     // debug!("update timeout from playback state == playing {}", this.imp().id.borrow());
                     this.update_timeout();

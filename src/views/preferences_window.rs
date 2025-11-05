@@ -6,16 +6,21 @@
 
 use adw::prelude::*;
 use adw::subclass::prelude::*;
-use gtk::{gio, gio::SettingsBindFlags, glib, glib::{clone, Sender}};
+use gtk::{
+    gio,
+    gio::SettingsBindFlags,
+    glib,
+    glib::{clone, Sender},
+};
 use gtk_macros::send;
 
+use log::{debug, error};
 use std::cell::RefCell;
 use std::error::Error;
-use log::{debug, error};
 
+use crate::database::DatabaseAction;
 use crate::i18n::i18n;
 use crate::util::{self, database};
-use crate::database::DatabaseAction;
 use crate::views::dialog::remove_directory_dialog::RemoveDirectoryDialog;
 
 mod imp {
@@ -135,7 +140,7 @@ mod imp {
         pub folder_dialog: RefCell<Option<gtk::FileChooserNative>>,
         pub dir_rows: RefCell<Option<Vec<adw::ActionRow>>>,
         pub settings: gio::Settings,
-        pub db_sender: Sender<DatabaseAction>
+        pub db_sender: Sender<DatabaseAction>,
     }
 
     #[glib::object_subclass]
@@ -243,30 +248,28 @@ impl PreferencesWindow {
             }),
         );
 
-        imp.settings.bind("album-from-track",&*imp.switch_album_from_track, "active")
+        imp.settings
+            .bind("album-from-track", &*imp.switch_album_from_track, "active")
             .flags(SettingsBindFlags::DEFAULT)
             .build();
 
         //LASTFM
         imp.settings
-        .bind(
-            "last-fm-enabled",
-            &*imp.switch_enable_lastfm,
-            "active",
-        )
-        .flags(SettingsBindFlags::DEFAULT)
-        .build();
+            .bind("last-fm-enabled", &*imp.switch_enable_lastfm, "active")
+            .flags(SettingsBindFlags::DEFAULT)
+            .build();
 
         imp.settings
-        .bind(
-            "play-commit-threshold",
-            &imp.spin_play_threshold.adjustment(),
-            "value",
-        )
-        .flags(SettingsBindFlags::DEFAULT)
-        .build();
+            .bind(
+                "play-commit-threshold",
+                &imp.spin_play_threshold.adjustment(),
+                "value",
+            )
+            .flags(SettingsBindFlags::DEFAULT)
+            .build();
 
-        imp.settings.bind("discord-rich-presence",&*imp.switch_discord, "active")
+        imp.settings
+            .bind("discord-rich-presence", &*imp.switch_discord, "active")
             .flags(SettingsBindFlags::DEFAULT)
             .build();
 
@@ -316,7 +319,6 @@ impl PreferencesWindow {
             .flags(SettingsBindFlags::DEFAULT)
             .build();
 
-
         imp.settings
             .bind("artist-detail-sort", &*imp.artist_detail_sort, "active")
             .flags(SettingsBindFlags::DEFAULT)
@@ -331,7 +333,6 @@ impl PreferencesWindow {
             .bind("track-page-sort", &*imp.track_page_sort, "active")
             .flags(SettingsBindFlags::DEFAULT)
             .build();
-
 
         imp.settings
             .bind(
@@ -351,7 +352,6 @@ impl PreferencesWindow {
             .flags(SettingsBindFlags::DEFAULT)
             .build();
 
-
         imp.settings
             .bind("genre-detail-sort", &*imp.genre_detail_sort, "active")
             .flags(SettingsBindFlags::DEFAULT)
@@ -370,7 +370,6 @@ impl PreferencesWindow {
             )
             .flags(SettingsBindFlags::DEFAULT)
             .build();
-
 
         imp.settings
             .bind("default-volume", &*imp.volume_adjustment, "value")
@@ -397,12 +396,12 @@ impl PreferencesWindow {
 
     fn load_folders(&self) {
         let imp = self.imp();
-        
+
         if let Some(dir_rows) = imp.dir_rows.take() {
             for row in dir_rows {
                 imp.dir_list.remove(&row);
             }
-        } 
+        }
         let dirs = imp.settings.strv("music-folders").to_vec();
         let mut rows = Vec::new();
         for (i, s) in dirs.iter().enumerate() {
@@ -411,7 +410,6 @@ impl PreferencesWindow {
             let row = adw::ActionRow::new();
             row.set_title(&folder_name.clone());
             row.add_css_class("darken-mas-mas");
-            
 
             let button = gtk::Button::new();
             button.set_icon_name("cross-filled-symbolic");
@@ -430,8 +428,8 @@ impl PreferencesWindow {
                     let dialog = RemoveDirectoryDialog::new(folder);
                     dialog.set_transient_for(Some(&this));
                     dialog.connect_local(
-                        "done", 
-                        false, 
+                        "done",
+                        false,
                         clone!(@strong this as that => move |_| {
                             that.close();
                             None
@@ -439,8 +437,8 @@ impl PreferencesWindow {
                     );
                     dialog.show();
 
-                    
-                })
+
+                }),
             );
 
             row.add_suffix(&button);
@@ -449,7 +447,6 @@ impl PreferencesWindow {
         }
 
         imp.dir_rows.replace(Some(rows));
-        
     }
 
     fn add_dialog(&self) {

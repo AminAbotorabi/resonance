@@ -7,11 +7,15 @@
 use adw::prelude::*;
 use adw::subclass::prelude::*;
 
-use gtk::{glib, glib::{clone, Sender}, CompositeTemplate};
+use gtk::{
+    glib,
+    glib::{clone, Sender},
+    CompositeTemplate,
+};
 use gtk_macros::send;
 
-use std::cell::{Cell, RefCell};
 use log::error;
+use std::cell::{Cell, RefCell};
 
 use crate::database::DatabaseAction;
 use crate::util::database;
@@ -20,7 +24,7 @@ mod imp {
     use super::*;
     use glib::subclass::Signal;
     use once_cell::sync::Lazy;
-    
+
     #[derive(Debug, CompositeTemplate)]
     #[template(resource = "/io/github/nate_xyz/Resonance/confirm_rename_playlist_dialog.ui")]
     pub struct ConfirmRenamePlaylistDialogPriv {
@@ -77,11 +81,7 @@ mod imp {
         }
 
         fn signals() -> &'static [Signal] {
-            static SIGNALS: Lazy<Vec<Signal>> = Lazy::new(|| {
-                vec![
-                    Signal::builder("done").build(),
-                ]
-            });
+            static SIGNALS: Lazy<Vec<Signal>> = Lazy::new(|| vec![Signal::builder("done").build()]);
 
             SIGNALS.as_ref()
         }
@@ -100,8 +100,13 @@ glib::wrapper! {
 }
 
 impl ConfirmRenamePlaylistDialog {
-    pub fn new(playlist_id: i64, new_title: Option<String>, new_description: Option<String>) -> ConfirmRenamePlaylistDialog {
-        let dialog: ConfirmRenamePlaylistDialog = glib::Object::builder::<ConfirmRenamePlaylistDialog>().build();
+    pub fn new(
+        playlist_id: i64,
+        new_title: Option<String>,
+        new_description: Option<String>,
+    ) -> ConfirmRenamePlaylistDialog {
+        let dialog: ConfirmRenamePlaylistDialog =
+            glib::Object::builder::<ConfirmRenamePlaylistDialog>().build();
         dialog.load(playlist_id, new_title, new_description);
         dialog
     }
@@ -141,9 +146,15 @@ impl ConfirmRenamePlaylistDialog {
             return;
         }
         if response == "change" {
-            send!(imp.db_sender, DatabaseAction::ChangePlaylistTitleAndOrDescription((playlist_id, imp.title.take(), imp.desc.take())));
+            send!(
+                imp.db_sender,
+                DatabaseAction::ChangePlaylistTitleAndOrDescription((
+                    playlist_id,
+                    imp.title.take(),
+                    imp.desc.take()
+                ))
+            );
         }
         self.emit_by_name::<()>("done", &[]);
     }
-
 }

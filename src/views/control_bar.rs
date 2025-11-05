@@ -7,20 +7,20 @@
 use adw::prelude::*;
 use adw::subclass::prelude::*;
 
-use gtk::{gio, gdk, glib, glib::clone, CompositeTemplate};
+use gtk::{gdk, gio, glib, glib::clone, CompositeTemplate};
 
-use std::{cell::RefCell, cell::Cell, rc::Rc};
 use log::debug;
+use std::{cell::Cell, cell::RefCell, rc::Rc};
 
-use crate::views::art::rounded_album_art::RoundedAlbumArt;
-use crate::player::queue::RepeatMode;
-use crate::model::track::Track;
-use crate::util::{player, model, seconds_to_string, settings_manager};
 use crate::i18n::i18n;
+use crate::model::track::Track;
+use crate::player::queue::RepeatMode;
+use crate::util::{model, player, seconds_to_string, settings_manager};
+use crate::views::art::rounded_album_art::RoundedAlbumArt;
 
-use super::window::WindowPage;
 use super::scale::Scale;
 use super::volume_widget::VolumeWidget;
+use super::window::WindowPage;
 
 mod imp {
     use super::*;
@@ -108,7 +108,7 @@ mod imp {
 
         #[template_child(id = "scale_box")]
         pub scale_box: TemplateChild<gtk::Box>,
-    
+
         #[template_child(id = "popover")]
         pub popover: TemplateChild<gtk::PopoverMenu>,
 
@@ -185,18 +185,20 @@ impl ControlBar {
                 let folded = imp.leaflet.is_folded();
                 imp.prog_bar.set_visible(folded);
             }),
-        );    
+        );
 
         let ctrl = gtk::GestureClick::new();
-        ctrl.connect_released(clone!(@strong self as this => move |_gesture, _n_press, x, _y| {
-            let imp = this.imp();
-            if  x > 0.0 && x < this.width() as f64 {
-                let player = player();
-                let scale_ratio = x /  imp.prog_bar.width() as f64;
-                let time_position = player.state().duration() * scale_ratio;
-                player.set_track_position(time_position);               
-            }
-        }));
+        ctrl.connect_released(
+            clone!(@strong self as this => move |_gesture, _n_press, x, _y| {
+                let imp = this.imp();
+                if  x > 0.0 && x < this.width() as f64 {
+                    let player = player();
+                    let scale_ratio = x /  imp.prog_bar.width() as f64;
+                    let time_position = player.state().duration() * scale_ratio;
+                    player.set_track_position(time_position);
+                }
+            }),
+        );
         imp.prog_bar.add_controller(ctrl);
 
         let ctrl = gtk::GestureClick::new();
@@ -211,7 +213,7 @@ impl ControlBar {
                     imp.popover.set_offset(x - width, y - height);
                     imp.popover.popup();
                 }
-            })
+            }),
         );
         self.add_controller(ctrl);
     }
@@ -269,22 +271,22 @@ impl ControlBar {
                 imp.shuffle_button.remove_css_class("suggested-action");
                 imp.loop_button.remove_css_class("suggested-action");
                 imp.repeat_button.remove_css_class("suggested-action");
-            },
+            }
             RepeatMode::Loop => {
                 imp.shuffle_button.remove_css_class("suggested-action");
                 imp.loop_button.add_css_class("suggested-action");
                 imp.repeat_button.remove_css_class("suggested-action");
-            },
+            }
             RepeatMode::LoopSong => {
                 imp.shuffle_button.remove_css_class("suggested-action");
                 imp.loop_button.remove_css_class("suggested-action");
                 imp.repeat_button.add_css_class("suggested-action");
-            },
+            }
             RepeatMode::Shuffle => {
                 imp.shuffle_button.add_css_class("suggested-action");
                 imp.loop_button.remove_css_class("suggested-action");
                 imp.repeat_button.remove_css_class("suggested-action");
-            },
+            }
         }
     }
 
@@ -292,49 +294,54 @@ impl ControlBar {
         let imp = self.imp();
         if player().state().playing() {
             debug!("playing");
-            imp.play_pause_image.set_icon_name(Some("media-playback-pause-symbolic"));
+            imp.play_pause_image
+                .set_icon_name(Some("media-playback-pause-symbolic"));
             imp.play_button.set_tooltip_text(Some(&i18n("Pause")));
         } else {
             debug!("paused");
-            imp.play_pause_image.set_icon_name(Some("media-playback-start-symbolic"));
+            imp.play_pause_image
+                .set_icon_name(Some("media-playback-start-symbolic"));
             imp.play_button.set_tooltip_text(Some(&i18n("Play")));
-
         }
     }
 
     fn button_connections(&self) {
         let imp = self.imp();
-        imp.play_button.connect_clicked(clone!(@strong self as this => @default-panic, move |_button| {
+        imp.play_button.connect_clicked(
+            clone!(@strong self as this => @default-panic, move |_button| {
                 player().toggle_play_pause();
-            })
+            }),
         );
 
-        imp.previous_button.connect_clicked(clone!(@strong self as this => @default-panic, move |_button| {
+        imp.previous_button.connect_clicked(
+            clone!(@strong self as this => @default-panic, move |_button| {
                 player().prev();
-            })
+            }),
         );
 
-        imp.next_button.connect_clicked(clone!(@strong self as this => @default-panic, move |_button| {
+        imp.next_button.connect_clicked(
+            clone!(@strong self as this => @default-panic, move |_button| {
                 player().next();
-            })
+            }),
         );
 
-        imp.loop_button.connect_clicked(clone!(@strong self as this => @default-panic, move |_button| {
+        imp.loop_button.connect_clicked(
+            clone!(@strong self as this => @default-panic, move |_button| {
                 player().queue().on_repeat_change(RepeatMode::Loop);
-            })
+            }),
         );
 
-        imp.repeat_button.connect_clicked(clone!(@strong self as this => @default-panic, move |_button| {
+        imp.repeat_button.connect_clicked(
+            clone!(@strong self as this => @default-panic, move |_button| {
                 player().queue().on_repeat_change(RepeatMode::LoopSong);
-            })
+            }),
         );
 
-        imp.shuffle_button.connect_clicked(clone!(@strong self as this => @default-panic, move |_button| {
+        imp.shuffle_button.connect_clicked(
+            clone!(@strong self as this => @default-panic, move |_button| {
                 player().queue().on_repeat_change(RepeatMode::Shuffle);
-            })
+            }),
         );
-
-
     }
 
     fn update_current_track(&self) {
@@ -345,7 +352,7 @@ impl ControlBar {
     pub fn update_view(&self) {
         let imp = self.imp();
         imp.spent_time_label.set_label("0:00");
-        
+
         if let Some(track) = imp.track.borrow().as_ref() {
             imp.track_name_label.set_label(&track.title());
             imp.album_name_label.set_label(&track.album());
@@ -356,8 +363,9 @@ impl ControlBar {
             imp.track_name_label_big.set_label(&track.title());
             imp.album_name_label_big.set_label(&track.album());
             imp.artist_name_label_big.set_label(&track.artist());
-            imp.duration_label.set_label(&format!(" / {}", seconds_to_string(track.duration())));
-            
+            imp.duration_label
+                .set_label(&format!(" / {}", seconds_to_string(track.duration())));
+
             self.sync_prev_next();
             self.load_art(track.cover_art_option());
             self.set_revealed(true);
@@ -405,7 +413,7 @@ impl ControlBar {
         imp.prog_bar.set_fraction(ratio);
     }
 
-    fn update_time_position(&self) { 
+    fn update_time_position(&self) {
         let imp = self.imp();
         let position = self.scale().time_position() as f64;
         imp.spent_time_label.set_label(&seconds_to_string(position));
@@ -435,7 +443,7 @@ impl ControlBar {
     pub fn set_revealed(&self, reveal: bool) {
         let imp = self.imp();
         let playing = player().state().playing();
-        
+
         if self.empty() || self.window_page() == WindowPage::Queue {
             debug!("CONTROL BAR HIDE");
             if self.revealed() {
@@ -452,9 +460,9 @@ impl ControlBar {
             if reveal && folded {
                 imp.prog_bar.set_visible(folded);
             }
-        }        
+        }
     }
-    
+
     pub fn set_window_page(&self, state: WindowPage) {
         self.imp().window_page.set(state);
     }
@@ -462,7 +470,7 @@ impl ControlBar {
     fn window_page(&self) -> WindowPage {
         self.imp().window_page.get()
     }
-    
+
     pub fn track(&self) -> Rc<Track> {
         self.imp().track.borrow().as_ref().unwrap().clone()
     }
@@ -478,17 +486,17 @@ impl ControlBar {
     pub fn track_info_button(&self) -> &gtk::Button {
         &self.imp().track_info_button
     }
-    
+
     fn create_menu(&self) {
         let imp = self.imp();
-    
+
         let main = gio::Menu::new();
         let menu = gio::Menu::new();
-        
+
         let menu_item = gio::MenuItem::new(Some(&i18n("Toggle Play Pause")), None);
         menu_item.set_action_and_target_value(Some("win.toggle-play-pause"), None);
         menu.append_item(&menu_item);
-    
+
         let menu_item = gio::MenuItem::new(Some(&i18n("Previous")), None);
         menu_item.set_action_and_target_value(Some("win.prev"), None);
         menu.append_item(&menu_item);
@@ -502,13 +510,13 @@ impl ControlBar {
         menu.append_item(&menu_item);
 
         main.append_section(Some(&i18n("Playback")), &menu);
-    
+
         let menu = gio::Menu::new();
-        
+
         let menu_item = gio::MenuItem::new(Some(&i18n("Go to Queue")), None);
         menu_item.set_action_and_target_value(Some("win.go-to-queue"), None);
         menu.append_item(&menu_item);
-      
+
         main.append_section(Some(&i18n("Navigate")), &menu);
 
         imp.popover.set_menu_model(Some(&main));

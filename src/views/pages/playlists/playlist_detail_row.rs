@@ -7,25 +7,30 @@
 use adw::prelude::*;
 use adw::subclass::prelude::*;
 
-use gtk::{gio, gdk, glib, glib::{clone, Sender}, CompositeTemplate};
+use gtk::{
+    gdk, gio, glib,
+    glib::{clone, Sender},
+    CompositeTemplate,
+};
 use gtk_macros::send;
 
-use std::{cell::{Cell, RefCell}, rc::Rc};
-use log::{error, debug};
+use log::{debug, error};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
 
 use crate::database::DatabaseAction;
 use crate::model::track::Track;
-use crate::views::art::rounded_album_art::RoundedAlbumArt;
+use crate::util::{database, model, player, seconds_to_string};
 use crate::views::art::icon_with_background::IconWithBackground;
-use crate::util::{model, player, database, seconds_to_string};
+use crate::views::art::rounded_album_art::RoundedAlbumArt;
 
 use super::track_item::PlaylistDetailTrackItem;
 
 mod imp {
     use super::*;
-    use glib::{
-        Value, ParamSpec, ParamSpecBoolean
-    };
+    use glib::{ParamSpec, ParamSpecBoolean, Value};
     use once_cell::sync::Lazy;
 
     #[derive(Debug, CompositeTemplate)]
@@ -36,7 +41,7 @@ mod imp {
 
         #[template_child(id = "delete_button_revealer")]
         pub delete_button_revealer: TemplateChild<gtk::Revealer>,
-        
+
         #[template_child(id = "info_box")]
         pub info_box: TemplateChild<gtk::Box>,
 
@@ -88,7 +93,7 @@ mod imp {
         pub grab_x: Cell<f64>,
         pub grab_y: Cell<f64>,
         pub playlist_detail_track_item: RefCell<Option<PlaylistDetailTrackItem>>,
-        pub db_sender: Sender<DatabaseAction>
+        pub db_sender: Sender<DatabaseAction>,
     }
 
     #[glib::object_subclass]
@@ -96,7 +101,6 @@ mod imp {
         const NAME: &'static str = "PlaylistDetailRow";
         type Type = super::PlaylistDetailRow;
         type ParentType = gtk::Box;
-
 
         fn new() -> Self {
             Self {
@@ -145,11 +149,15 @@ mod imp {
         }
 
         fn properties() -> &'static [ParamSpec] {
-            static PROPERTIES: Lazy<Vec<ParamSpec>> =
-                Lazy::new(|| vec![ParamSpecBoolean::builder("edit-mode").default_value(false).explicit_notify().build()]);
+            static PROPERTIES: Lazy<Vec<ParamSpec>> = Lazy::new(|| {
+                vec![ParamSpecBoolean::builder("edit-mode")
+                    .default_value(false)
+                    .explicit_notify()
+                    .build()]
+            });
             PROPERTIES.as_ref()
         }
-    
+
         fn set_property(&self, _id: usize, value: &Value, pspec: &ParamSpec) {
             match pspec.name() {
                 "edit-mode" => {
@@ -160,7 +168,7 @@ mod imp {
                 _ => unimplemented!(),
             }
         }
-    
+
         fn property(&self, _id: usize, pspec: &ParamSpec) -> Value {
             match pspec.name() {
                 "edit-mode" => self.edit_mode.get().to_value(),
@@ -190,13 +198,17 @@ impl PlaylistDetailRow {
 
         imp.popover.set_parent(self);
 
-        imp.overlay_box.prepend(&IconWithBackground::new("media-playback-start-symbolic", 60, false));
+        imp.overlay_box.prepend(&IconWithBackground::new(
+            "media-playback-start-symbolic",
+            60,
+            false,
+        ));
 
         imp.add_button.connect_clicked(
             clone!(@strong self as this => @default-panic, move |_button| {
                 let track = this.track();
                 player().add_track(track);
-            })
+            }),
         );
 
         imp.delete_button.connect_clicked(
@@ -207,47 +219,43 @@ impl PlaylistDetailRow {
         );
 
         let ctrl = gtk::EventControllerMotion::new();
-        ctrl.connect_enter(
-            clone!(@strong self as this => move |_controller, _x, _y| {
-                let imp = this.imp();
+        ctrl.connect_enter(clone!(@strong self as this => move |_controller, _x, _y| {
+            let imp = this.imp();
 
-                if !imp.edit_mode.get() {
-                    imp.duration_label.hide();
-                    imp.add_button.show();
-                    
-                    match imp.art.borrow().as_ref() {
-                        Some(_art) => {
-                            imp.overlay_box.show();
-                        }
-                        None => {
-                            imp.play_icon_no_art.show();
-                        },
+            if !imp.edit_mode.get() {
+                imp.duration_label.hide();
+                imp.add_button.show();
+
+                match imp.art.borrow().as_ref() {
+                    Some(_art) => {
+                        imp.overlay_box.show();
                     }
-                } 
+                    None => {
+                        imp.play_icon_no_art.show();
+                    },
+                }
+            }
 
-            })
-        );
+        }));
 
-        ctrl.connect_leave(
-            clone!(@strong self as this => move |_controller| {
-                let imp = this.imp();
+        ctrl.connect_leave(clone!(@strong self as this => move |_controller| {
+            let imp = this.imp();
 
-                if !imp.edit_mode.get() {
-                    imp.duration_label.show();
-                    imp.add_button.hide();
-                    
-                    match imp.art.borrow().as_ref() {
-                        Some(_art) => {
-                            imp.overlay_box.hide();
-                        }
-                        None => {
-                            imp.play_icon_no_art.hide();
-                        },
+            if !imp.edit_mode.get() {
+                imp.duration_label.show();
+                imp.add_button.hide();
+
+                match imp.art.borrow().as_ref() {
+                    Some(_art) => {
+                        imp.overlay_box.hide();
                     }
-                } 
+                    None => {
+                        imp.play_icon_no_art.hide();
+                    },
+                }
+            }
 
-            })
-        );
+        }));
         self.add_controller(ctrl);
 
         let ctrl = gtk::DragSource::builder()
@@ -302,10 +310,12 @@ impl PlaylistDetailRow {
             .actions(gdk::DragAction::MOVE)
             .build();
 
-        drop_target.connect_accept(clone!(@strong self as this => move |_drop_target, _drop_value| {
-                let imp = this.imp();
-                imp.edit_mode.get()
-        }));
+        drop_target.connect_accept(
+            clone!(@strong self as this => move |_drop_target, _drop_value| {
+                    let imp = this.imp();
+                    imp.edit_mode.get()
+            }),
+        );
 
         drop_target.connect_drop(
             clone!(@strong self as this => move |_drop_target, drop_value, _x, _y| {
@@ -356,13 +366,16 @@ impl PlaylistDetailRow {
         match imp.track.borrow().as_ref() {
             Some(track) => {
                 imp.track_title_label.set_label(&track.title());
-                imp.album_name_label.set_label(&format!(" - {} - ", track.album()));
+                imp.album_name_label
+                    .set_label(&format!(" - {} - ", track.album()));
                 imp.album_artist_label.set_label(&track.artist());
-                imp.number_label.set_label(&format!("{:02}", imp.playlist_position.get()+1));
+                imp.number_label
+                    .set_label(&format!("{:02}", imp.playlist_position.get() + 1));
 
                 let duration = track.duration();
                 if duration > 0.0 {
-                    imp.duration_label.set_label(seconds_to_string(duration).as_str());
+                    imp.duration_label
+                        .set_label(seconds_to_string(duration).as_str());
                 }
 
                 match track.cover_art_option() {
@@ -382,8 +395,6 @@ impl PlaylistDetailRow {
                         imp.art.replace(None);
                     }
                 }
-                
-
             }
             None => {
                 imp.track_title_label.set_label("");
@@ -400,7 +411,7 @@ impl PlaylistDetailRow {
         let imp = self.imp();
 
         let edit_mode = imp.edit_mode.get();
-        
+
         imp.duration_label.hide();
         imp.add_button.hide();
         imp.drag_icon_revealer.set_reveal_child(edit_mode);

@@ -11,12 +11,12 @@ use gtk::{gio, glib, glib::clone};
 use std::rc::Rc;
 
 use crate::config::VERSION;
-use crate::Window;
 use crate::database::Database;
+use crate::i18n::i18n;
 use crate::model::model::Model;
 use crate::player::player::Player;
 use crate::views::preferences_window::PreferencesWindow;
-use crate::i18n::i18n;
+use crate::Window;
 
 mod imp {
     use super::*;
@@ -43,8 +43,8 @@ mod imp {
                 None,
                 clone!(@strong model as this => move |action| this.process_action(action)),
             );
-            
-            model.load_database(database.clone());           
+
+            model.load_database(database.clone());
             Self {
                 database,
                 model: Rc::new(model),
@@ -131,7 +131,7 @@ impl App {
             .issue_url("https://github.com/nate-xyz/resonance/issues")
             .build();
 
-        // Translator credits. Replace "translator-credits" with your name/username, and optionally an email or URL. 
+        // Translator credits. Replace "translator-credits" with your name/username, and optionally an email or URL.
         // One name per line, please do not remove previous names.
         about.set_translator_credits(&i18n("translator-credits"));
 
@@ -148,7 +148,7 @@ impl App {
     pub fn model(&self) -> Rc<Model> {
         self.imp().model.clone()
     }
-    
+
     pub fn database(&self) -> Rc<Database> {
         self.imp().database.clone()
     }

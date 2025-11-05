@@ -6,38 +6,47 @@
 
 use adw::subclass::prelude::*;
 
-use gtk::{gio, glib, glib::{clone, Sender, Receiver}, prelude::*};
+use gtk::{
+    gio, glib,
+    glib::{clone, Receiver, Sender},
+    prelude::*,
+};
 use gtk_macros::send;
 
-use std::{
-    cell::{Cell, RefCell}, 
-    collections::{HashMap, HashSet}, 
-    time::Duration, 
-    error::Error, 
-    path::PathBuf, 
-    rc::Rc, 
-    env, 
-    fs, 
-    fmt, 
-    thread,
-};
-use rusqlite::{Connection, Result, Transaction, OptionalExtension, params};
 use chrono::{DateTime, Utc};
-use directories_next::BaseDirs; 
+use directories_next::BaseDirs;
 use log::{debug, error};
+use rusqlite::{params, Connection, OptionalExtension, Result, Transaction};
+use std::{
+    cell::{Cell, RefCell},
+    collections::{HashMap, HashSet},
+    env,
+    error::Error,
+    fmt, fs,
+    path::PathBuf,
+    rc::Rc,
+    thread,
+    time::Duration,
+};
 
-use crate::model::{track::Track, model::ModelAction};
+use crate::model::{model::ModelAction, track::Track};
 
+use super::i18n::{i18n, i18n_k};
 use super::importer::{Importer, MapVal};
 use super::toasts::{add_error_toast, add_success_toast};
-use super::i18n::{i18n, i18n_k};
 use super::util;
 
 #[derive(Clone, Debug)]
 pub enum DatabaseAction {
     TryLoadingDataBase,
     TryAddMusicFolder(PathBuf),
-    ConstructFromTags((String, HashMap<String, HashMap<String, HashMap<String, MapVal>>>, HashMap<String, Vec<u8>>)),
+    ConstructFromTags(
+        (
+            String,
+            HashMap<String, HashMap<String, HashMap<String, MapVal>>>,
+            HashMap<String, Vec<u8>>,
+        ),
+    ),
     AddArtistImages(Vec<(i64, Option<(String, Vec<u8>)>)>),
     AddArtistImage((i64, Option<(String, Vec<u8>)>)),
     AddArtistImagesDone(u32),
@@ -49,7 +58,7 @@ pub enum DatabaseAction {
     ChangePlaylistTitleAndOrDescription((i64, Option<String>, Option<String>)),
     AddTracksToPlaylist((i64, String, Vec<i64>)),
     RemoveTrackFromPlaylist(i64),
-    ReorderPlaylist((i64, usize, usize))
+    ReorderPlaylist((i64, usize, usize)),
 }
 
 #[derive(Debug)]
@@ -63,9 +72,7 @@ impl Error for DatabaseError {}
 
 mod imp {
     use super::*;
-    use glib::{
-        Value, ParamSpec, ParamSpecBoolean
-    };
+    use glib::{ParamSpec, ParamSpecBoolean, Value};
     use once_cell::sync::Lazy;
 
     #[derive(Debug)]
@@ -116,14 +123,14 @@ mod imp {
         }
 
         fn properties() -> &'static [ParamSpec] {
-            static PROPERTIES: Lazy<Vec<ParamSpec>> =
-                Lazy::new(|| vec![
-                    ParamSpecBoolean::builder("loaded").default_value(false).build()
-                    ]
-                );
+            static PROPERTIES: Lazy<Vec<ParamSpec>> = Lazy::new(|| {
+                vec![ParamSpecBoolean::builder("loaded")
+                    .default_value(false)
+                    .build()]
+            });
             PROPERTIES.as_ref()
         }
-    
+
         fn set_property(&self, _id: usize, value: &Value, pspec: &ParamSpec) {
             match pspec.name() {
                 "loaded" => {
@@ -134,7 +141,7 @@ mod imp {
                 _ => unimplemented!(),
             }
         }
-    
+
         fn property(&self, _id: usize, pspec: &ParamSpec) -> Value {
             match pspec.name() {
                 "loaded" => self.loaded.get().to_value(),
@@ -157,7 +164,7 @@ impl Default for Database {
 impl Database {
     pub fn new() -> Rc<Database> {
         let db: Database = Self::default();
-        
+
         let path = env::current_dir().ok().unwrap();
         debug!("The current directory is {}", path.display());
 
@@ -166,7 +173,6 @@ impl Database {
         database.clone().setup_channel();
         database
     }
-
 
     pub fn setup_channel(self: Rc<Self>) {
         let receiver = self.imp().db_receiver.borrow_mut().take().unwrap();
@@ -180,7 +186,6 @@ impl Database {
         self.imp().db_sender.clone()
     }
 
-
     fn process_action(&self, action: DatabaseAction) -> glib::Continue {
         match action {
             DatabaseAction::ConstructFromTags((folder, tags, cover_art_bytes)) => {
@@ -188,137 +193,179 @@ impl Database {
                     Ok(_) => (),
                     Err(e) => error!("Unable to contrust database from tags: {}", e),
                 }
-            },
+            }
             DatabaseAction::TryLoadingDataBase => {
                 self.try_loading_database();
-            },
+            }
             DatabaseAction::TryAddMusicFolder(folder) => {
                 match self.try_add_music_folder(folder.clone()) {
                     Ok(_) => {
                         add_success_toast(&i18n("Added Folder:"), &format!("{:?}", folder));
-                    },
+                    }
                     Err(e) => {
                         error!("{}", e);
                         add_error_toast(i18n("Unable to add music folder."));
-                    },
-                } 
+                    }
+                }
             }
             DatabaseAction::AddArtistImages(payload) => {
                 let n_amount = payload.len();
                 match self.add_artist_image_bulk(payload) {
                     Ok(_) => {
                         // Translators: do not replace {number_of_artists}
-                        add_success_toast(&i18n("Added Images!"), &i18n_k("Added {number_of_artists} Artist Images.", &[("number_of_artists", &format!("{}", n_amount))]));
-
-                    },
+                        add_success_toast(
+                            &i18n("Added Images!"),
+                            &i18n_k(
+                                "Added {number_of_artists} Artist Images.",
+                                &[("number_of_artists", &format!("{}", n_amount))],
+                            ),
+                        );
+                    }
                     Err(e) => error!("Unable to add artist images: {}", e),
                 }
-            },
+            }
             DatabaseAction::CreatePlaylist((playlist_title, playlist_desc, track_ids)) => {
                 match self.create_playlist(playlist_title.clone(), playlist_desc, track_ids) {
                     Ok(_) => {
                         // Translators: do not replace {playlist_title}
-                        add_success_toast(&i18n("Added Playlist!"), &i18n_k("Playlist «{playlist_title}» has been created!", &[("playlist_title", &playlist_title)]))
-                    },
+                        add_success_toast(
+                            &i18n("Added Playlist!"),
+                            &i18n_k(
+                                "Playlist «{playlist_title}» has been created!",
+                                &[("playlist_title", &playlist_title)],
+                            ),
+                        )
+                    }
                     Err(e) => {
                         error!("{}", e);
                         add_error_toast(i18n("Unable to add playlist."));
-                    },
+                    }
                 }
-            },
+            }
             DatabaseAction::DuplicatePlaylist((playlist_title, playlist_desc, track_ids)) => {
                 match self.create_playlist(playlist_title, playlist_desc, track_ids) {
-                    Ok(_) => {
-                        add_success_toast(&i18n("Duplicated!"), &i18n("Copied playlist successfully."))
-                    },
+                    Ok(_) => add_success_toast(
+                        &i18n("Duplicated!"),
+                        &i18n("Copied playlist successfully."),
+                    ),
                     Err(e) => {
                         error!("{}", e);
                         add_error_toast(i18n("Unable to duplicate playlist."));
-                    },
+                    }
                 }
-            },
+            }
             DatabaseAction::RenamePlaylist((playlist_id, old_title, new_title)) => {
                 match self.rename_playlist(playlist_id, new_title.clone()) {
                     Ok(_) => {
                         // Translators: do not replace {old_title} or {new_title}
-                        add_success_toast(&i18n("Renamed!"), &i18n_k("Playlist has been renamed from {old_title} to {new_title}!", &[("old_title", &old_title), ("new_title", &new_title)]))
-                    },
+                        add_success_toast(
+                            &i18n("Renamed!"),
+                            &i18n_k(
+                                "Playlist has been renamed from {old_title} to {new_title}!",
+                                &[("old_title", &old_title), ("new_title", &new_title)],
+                            ),
+                        )
+                    }
                     Err(e) => {
                         error!("{}", e);
                         add_error_toast(i18n("Unable to rename playlist."));
-                    },
+                    }
                 }
-            },
+            }
             DatabaseAction::RemoveDirectory(dir_to_remove) => {
                 match self.try_remove_folder(dir_to_remove.clone()) {
                     Ok(_) => {
                         // Translators: do not replace {removed_directory}
-                        add_success_toast(&i18n("Removed:"), &i18n_k("{removed_directory} has been removed from the database.", &[("removed_directory", &dir_to_remove)]))
-                    },
+                        add_success_toast(
+                            &i18n("Removed:"),
+                            &i18n_k(
+                                "{removed_directory} has been removed from the database.",
+                                &[("removed_directory", &dir_to_remove)],
+                            ),
+                        )
+                    }
                     Err(e) => {
                         error!("{}", e);
                         add_error_toast(i18n("Unable to remove directory."));
-                    },
+                    }
                 }
-            },
+            }
             DatabaseAction::DeletePlaylist(playlist_id) => {
                 match self.delete_playlist(playlist_id) {
                     Ok(_) => {
                         debug!("Deleted playlist {}", playlist_id);
-                        add_success_toast(&i18n("Deleted."), &i18n("Removed playlist successfully!"))
-                    },
+                        add_success_toast(
+                            &i18n("Deleted."),
+                            &i18n("Removed playlist successfully!"),
+                        )
+                    }
                     Err(e) => {
                         error!("Removing playlist error: {}", e);
                         add_error_toast(i18n("Unable to remove playlist."));
-                    },
+                    }
                 }
-            },
-            DatabaseAction::ChangePlaylistTitleAndOrDescription((playlist_id, title_option, description_option)) => {
-                match self.change_playlist_title_and_or_description(playlist_id, title_option, description_option) {
+            }
+            DatabaseAction::ChangePlaylistTitleAndOrDescription((
+                playlist_id,
+                title_option,
+                description_option,
+            )) => {
+                match self.change_playlist_title_and_or_description(
+                    playlist_id,
+                    title_option,
+                    description_option,
+                ) {
                     Ok(_) => {
-                        debug!("Deleted playlist {}",playlist_id);
-                        add_success_toast(&i18n("Modified."), &i18n("Changed playlist successfully!"));
-                    },
+                        debug!("Deleted playlist {}", playlist_id);
+                        add_success_toast(
+                            &i18n("Modified."),
+                            &i18n("Changed playlist successfully!"),
+                        );
+                    }
                     Err(e) => {
                         error!("Modifying playlist error: {}", e);
                         add_error_toast(i18n("Unable to modify playlist."));
-                    },
+                    }
                 }
-            },
+            }
             DatabaseAction::AddTracksToPlaylist((playlist_id, playlist_title, tracks)) => {
                 match self.add_tracks_to_playlist(playlist_id, tracks) {
-                    Ok(_) => {
-                        add_success_toast(&i18n("Added"), &i18n_k(" tracks to {playlist_title}!", &[("playlist_title", &playlist_title)]))
-                    },
+                    Ok(_) => add_success_toast(
+                        &i18n("Added"),
+                        &i18n_k(
+                            " tracks to {playlist_title}!",
+                            &[("playlist_title", &playlist_title)],
+                        ),
+                    ),
                     Err(e) => {
                         error!("{}", e);
                         add_error_toast(i18n("Unable to add track to playlist."));
-                    },
+                    }
                 }
-            },
+            }
             DatabaseAction::RemoveTrackFromPlaylist(playlist_entry_id) => {
                 match self.remove_track_from_playlist(playlist_entry_id) {
                     Ok(_) => {
                         add_success_toast(&i18n("Removed"), &i18n(" track from playlist."));
                         debug!("removed playlist_entry from playlist");
-                    },
+                    }
                     Err(e) => {
                         error!("{}", e);
                         add_error_toast(i18n("Unable to remove track from playlist."));
-                    },
+                    }
                 }
-            },
+            }
             DatabaseAction::ReorderPlaylist((playlist_id, old_position, new_position)) => {
                 match self.reorder_playlist(playlist_id, old_position, new_position) {
                     Ok(_) => {
                         debug!("reordered playlist");
-                    },
+                    }
                     Err(e) => {
                         error!("{}", e);
                         add_error_toast(i18n("Unable to reorder playlist."));
-                    },
+                    }
                 }
-            },
+            }
             _ => debug!("Received action {:?}", action),
         }
 
@@ -338,7 +385,7 @@ impl Database {
             glib::clone!(@strong self as this => move |_settings, _name| {
                 debug!("database -> music folders has changed");
                 let imp = this.imp();
-                
+
                 this.get_dirs();
 
                 if !imp.loaded.get() {
@@ -378,21 +425,21 @@ impl Database {
 
         if let Ok(_) = self.open_connection_to_db() {
             let is_folders = imp.folders.borrow().is_empty().clone();
-            if !is_folders { // there are folders loaded
+            if !is_folders {
+                // there are folders loaded
                 match self.verify_music_folders() {
                     Ok(_) => {
                         //self.emit_by_name::<()>("populate-model", &[]);
                         send!(imp.model_sender, ModelAction::PopulateAll);
                         debug!("Folder verified & loaded");
                         self.set_property("loaded", true.to_value());
-                        return
-                    },
+                        return;
+                    }
                     Err(e) => {
                         error!("Unable to load music folders ... {}", e);
                         add_error_toast(i18n("Unable to load music folders."));
-                    },
+                    }
                 }
-
             } else {
                 debug!("No folders, but opened connection to db.")
             }
@@ -414,13 +461,12 @@ impl Database {
         //     imp.loaded.set(false);
         //     return;
         // }
-
     }
 
     fn check_loaded(&self, tx: &Transaction) -> Result<(), Box<dyn Error>> {
         let mut stmt = tx.prepare("SELECT EXISTS(SELECT 1 FROM Music_Folders LIMIT 1);")?;
         let exists: i32 = stmt.query_row([], |row| row.get(0))?;
-        
+
         if exists == 0 {
             debug!("no folders loaded");
             self.set_property("loaded", false.to_value());
@@ -438,14 +484,14 @@ impl Database {
 
         let folders = imp.folders.borrow().clone();
         for dir in folders.iter() {
-    
-            if !self.check_if_folder_exists(&tx,dir.to_string())? {
-                self.importer().extract_folder(dir.to_string(), imp.db_sender.clone());
+            if !self.check_if_folder_exists(&tx, dir.to_string())? {
+                self.importer()
+                    .extract_folder(dir.to_string(), imp.db_sender.clone());
             }
         }
 
         tx.commit()?;
-        
+
         Ok(())
     }
 
@@ -453,11 +499,14 @@ impl Database {
         let path = self.database_location();
         debug!("database path: {:?}", path);
 
-        let conn = match Connection::open_with_flags(path.clone(), rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE) {
+        let conn = match Connection::open_with_flags(
+            path.clone(),
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE,
+        ) {
             Ok(c) => {
                 debug!("open database by existing uri");
                 c
-            },
+            }
             Err(_) => {
                 debug!("open new database");
                 Connection::open(path).unwrap()
@@ -465,8 +514,11 @@ impl Database {
         };
 
         let result = conn.query_row("SELECT sqlite_source_id()", params![], |row| row.get(0));
-        
-        debug!("sqlite_source_id: {}", result.unwrap_or("Error".to_string()));
+
+        debug!(
+            "sqlite_source_id: {}",
+            result.unwrap_or("Error".to_string())
+        );
 
         *self.imp().conn.borrow_mut() = Some(conn);
         //self.imp().conn.replace(Some(conn));
@@ -476,9 +528,6 @@ impl Database {
         Ok(())
     }
 
-
-
-
     // rusqlite::OpenFlags::SQLITE_OPEN_CREATE
     // fn open_connection_to_db(&self) -> bool {
     //     let path = self.database_location();
@@ -486,7 +535,7 @@ impl Database {
     //     let conn = match Connection::open_with_flags(
     //         path.clone(),
     //         rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE
-    //     ) {  
+    //     ) {
     //         Ok(c) => {
     //             debug!("open database by existing uri");
     //             c
@@ -511,18 +560,16 @@ impl Database {
             fs::create_dir_all(folder.clone()).unwrap();
             folder.join("resonance.db")
         } else {
-            let xdg_dirs = xdg::BaseDirectories::with_prefix("io.github.nate_xyz.Resonance").unwrap();
+            let xdg_dirs =
+                xdg::BaseDirectories::with_prefix("io.github.nate_xyz.Resonance").unwrap();
             match xdg_dirs.place_data_file("resonance.db") {
                 Ok(path) => {
                     let folder = xdg_dirs.get_data_home();
                     fs::create_dir_all(folder).unwrap();
                     path
-                },
-                Err(_) => {
-                    PathBuf::from("resonance.db")
                 }
+                Err(_) => PathBuf::from("resonance.db"),
             }
-                          
         }
     }
 
@@ -530,22 +577,30 @@ impl Database {
     pub fn try_add_music_folder(&self, path: PathBuf) -> Result<(), Box<dyn Error>> {
         let imp = self.imp();
         let path_str = path.into_os_string().into_string().ok().unwrap();
-        imp.import_start_time.replace(Some(chrono::offset::Utc::now()));
-        self.importer().extract_folder(path_str, imp.db_sender.clone());
+        imp.import_start_time
+            .replace(Some(chrono::offset::Utc::now()));
+        self.importer()
+            .extract_folder(path_str, imp.db_sender.clone());
         Ok(())
     }
 
     //Called after importer extracts tags with mutagen
-    fn construct_from_tags(&self, folder: String, tags: HashMap<String, HashMap<String, HashMap<String, MapVal>>>, bytes: HashMap<String, Vec<u8>>)  -> Result<(), Box<dyn Error>>{
+    fn construct_from_tags(
+        &self,
+        folder: String,
+        tags: HashMap<String, HashMap<String, HashMap<String, MapVal>>>,
+        bytes: HashMap<String, Vec<u8>>,
+    ) -> Result<(), Box<dyn Error>> {
         let imp = self.imp();
         let new_artists = {
             let mut conn = imp.conn.borrow_mut();
             let conn = conn.as_mut().ok_or("Connection not established")?;
-    
+
             let tx = conn.transaction()?;
-            self.importer().build_database_from_tags(&tx, folder.clone(), tags, bytes)?;
+            self.importer()
+                .build_database_from_tags(&tx, folder.clone(), tags, bytes)?;
             let new_artists = self.new_artists(&tx)?;
-            
+
             tx.commit()?;
 
             new_artists
@@ -555,8 +610,8 @@ impl Database {
         let mut folders = imp.folders.borrow_mut().clone();
         folders.insert(folder);
         let music_folders = folders.into_iter().collect::<Vec<String>>();
-        imp.settings.set_strv("music-folders", music_folders.as_slice())?;
-
+        imp.settings
+            .set_strv("music-folders", music_folders.as_slice())?;
 
         //UPDATE ARTISTS ART
         if !new_artists.is_empty() {
@@ -564,12 +619,12 @@ impl Database {
 
             let sender = imp.db_sender.clone();
 
-            thread::spawn(move || {
-                match fetch_artist_images_bulk(new_artists, sender.clone()) {
+            thread::spawn(
+                move || match fetch_artist_images_bulk(new_artists, sender.clone()) {
                     Ok(()) => debug!("Added all artist images!"),
                     Err(e) => error!("Adding artist images error: {}", e),
-                }
-            });
+                },
+            );
         }
 
         if let Some(start) = imp.import_start_time.take() {
@@ -579,7 +634,7 @@ impl Database {
                 debug!("Import time elapsed: {}", duration.num_seconds())
             } else {
                 debug!("Import elapsed: {} minutes", duration.num_minutes())
-            }   
+            }
         }
 
         Ok(())
@@ -601,12 +656,12 @@ impl Database {
 
             let sender = imp.db_sender.clone();
 
-            thread::spawn(move || {
-                match fetch_artist_images_bulk(new_artists, sender.clone()) {
+            thread::spawn(
+                move || match fetch_artist_images_bulk(new_artists, sender.clone()) {
                     Ok(()) => debug!("Added all artist images!"),
                     Err(e) => error!("Adding artist images error: {}", e),
-                }
-            });
+                },
+            );
         } else {
             debug!("No new artists");
         }
@@ -630,7 +685,6 @@ impl Database {
         Ok(result)
     }
 
-
     /*
     ADDING VALUES TO TABLES
     */
@@ -648,7 +702,8 @@ impl Database {
     }
 
     pub fn add_artist(&self, tx: &Transaction, name: String) -> Result<i64, Box<dyn Error>> {
-        let mut stmt = tx.prepare("INSERT INTO Artists ( name, image_fetched ) VALUES ( ?, ? );")?;
+        let mut stmt =
+            tx.prepare("INSERT INTO Artists ( name, image_fetched ) VALUES ( ?, ? );")?;
         stmt.execute(params![name, 0])?;
         Ok(tx.last_insert_rowid())
     }
@@ -660,10 +715,17 @@ impl Database {
     }
 
     //ADD ALBUM
-    pub fn add_album_full(&self, tx: &Transaction, 
-        title: String, artist: String, date: String, genre: String,
-        cover_art_id: Option<i64>, album_artist_id: i64, genre_id: Option<i64>) -> Result<i64, Box<dyn Error>> {
-        
+    pub fn add_album_full(
+        &self,
+        tx: &Transaction,
+        title: String,
+        artist: String,
+        date: String,
+        genre: String,
+        cover_art_id: Option<i64>,
+        album_artist_id: i64,
+        genre_id: Option<i64>,
+    ) -> Result<i64, Box<dyn Error>> {
         let album_id = self.add_album(&tx, title, artist, date, genre)?;
         self.add_album_artist_junction(&tx, album_id, album_artist_id)?;
 
@@ -678,50 +740,91 @@ impl Database {
         Ok(album_id)
     }
 
-    fn add_album(&self, tx: &Transaction, 
-        title: String, artist: String, date: String, genre: String) -> Result<i64, Box<dyn Error>> {
-        let mut stmt = tx.prepare("INSERT INTO Albums (title, artist, date, genre) VALUES ( ?, ?, ?, ? );")?;
-        stmt.execute(params![
-            title, artist, date, genre
-        ])?;
+    fn add_album(
+        &self,
+        tx: &Transaction,
+        title: String,
+        artist: String,
+        date: String,
+        genre: String,
+    ) -> Result<i64, Box<dyn Error>> {
+        let mut stmt =
+            tx.prepare("INSERT INTO Albums (title, artist, date, genre) VALUES ( ?, ?, ?, ? );")?;
+        stmt.execute(params![title, artist, date, genre])?;
         Ok(tx.last_insert_rowid())
     }
 
-    fn add_album_artist_junction(&self, tx: &Transaction, 
-        album_id: i64, artist_id: i64) -> Result<i64, Box<dyn Error>> {
-        let mut stmt = tx.prepare("INSERT INTO Album_Artist_Junction (album_id, artist_id) VALUES ( ?, ? );")?;
+    fn add_album_artist_junction(
+        &self,
+        tx: &Transaction,
+        album_id: i64,
+        artist_id: i64,
+    ) -> Result<i64, Box<dyn Error>> {
+        let mut stmt =
+            tx.prepare("INSERT INTO Album_Artist_Junction (album_id, artist_id) VALUES ( ?, ? );")?;
         stmt.execute(params![album_id, artist_id])?;
         Ok(tx.last_insert_rowid())
     }
 
-    fn add_album_cover_art_junction(&self, tx: &Transaction, 
-        album_id: i64, cover_art_id: i64) -> Result<i64, Box<dyn Error>> {
-        let mut stmt = tx.prepare("INSERT INTO Album_Cover_Art_Junction (album_id, cover_art_id) VALUES ( ?, ? );")?;
+    fn add_album_cover_art_junction(
+        &self,
+        tx: &Transaction,
+        album_id: i64,
+        cover_art_id: i64,
+    ) -> Result<i64, Box<dyn Error>> {
+        let mut stmt = tx.prepare(
+            "INSERT INTO Album_Cover_Art_Junction (album_id, cover_art_id) VALUES ( ?, ? );",
+        )?;
         stmt.execute(params![album_id, cover_art_id])?;
         Ok(tx.last_insert_rowid())
     }
 
-    fn add_album_genre_junction(&self, tx: &Transaction, 
-        album_id: i64, genre_id: i64) -> Result<i64, Box<dyn Error>> {
-        let mut stmt = tx.prepare("INSERT INTO Album_Genre_Junction (album_id, genre_id) VALUES ( ?, ? );")?;
-        stmt.execute(params![
-            album_id, genre_id
-        ])?;
+    fn add_album_genre_junction(
+        &self,
+        tx: &Transaction,
+        album_id: i64,
+        genre_id: i64,
+    ) -> Result<i64, Box<dyn Error>> {
+        let mut stmt =
+            tx.prepare("INSERT INTO Album_Genre_Junction (album_id, genre_id) VALUES ( ?, ? );")?;
+        stmt.execute(params![album_id, genre_id])?;
         Ok(tx.last_insert_rowid())
     }
 
     //ADD TRACK
 
-    pub fn add_track_full(&self, tx: &Transaction, 
-        title: String, filetype: String, album_name: String, album_artist: String, date: String, 
-        duration: f32, track_number: u32, disc_number: u32,  
-        album_id: i64, album_artist_id: i64, cover_art_id: Option<i64>,
-        file_uri: String, last_modified: DateTime<Utc>, folder_id: i64, 
+    pub fn add_track_full(
+        &self,
+        tx: &Transaction,
+        title: String,
+        filetype: String,
+        album_name: String,
+        album_artist: String,
+        date: String,
+        duration: f32,
+        track_number: u32,
+        disc_number: u32,
+        album_id: i64,
+        album_artist_id: i64,
+        cover_art_id: Option<i64>,
+        file_uri: String,
+        last_modified: DateTime<Utc>,
+        folder_id: i64,
     ) -> Result<i64, Box<dyn Error>> {
-        
-        let file_id = self.add_file_uri(&tx,file_uri, last_modified, folder_id)?;
-        let track_id = self.add_track(&tx, title, filetype, album_name, date, duration, track_number, disc_number, album_artist, file_id)?;
-        
+        let file_id = self.add_file_uri(&tx, file_uri, last_modified, folder_id)?;
+        let track_id = self.add_track(
+            &tx,
+            title,
+            filetype,
+            album_name,
+            date,
+            duration,
+            track_number,
+            disc_number,
+            album_artist,
+            file_id,
+        )?;
+
         self.add_track_album_junction(&tx, track_id, album_id)?;
         self.add_track_artist_junction(&tx, track_id, album_artist_id)?;
         self.add_track_folder_junction(&tx, track_id, folder_id)?;
@@ -733,62 +836,113 @@ impl Database {
         Ok(track_id)
     }
 
-    fn add_file_uri(&self, tx: &Transaction, file_uri: String, last_modified: DateTime<Utc>, folder_id: i64) -> Result<i64, Box<dyn Error>> {
+    fn add_file_uri(
+        &self,
+        tx: &Transaction,
+        file_uri: String,
+        last_modified: DateTime<Utc>,
+        folder_id: i64,
+    ) -> Result<i64, Box<dyn Error>> {
         let mut stmt = tx.prepare("INSERT INTO File_URIs (uri, last_modified) VALUES ( ?, ? );")?;
         stmt.execute(params![file_uri, last_modified.timestamp()])?;
         let file_id = tx.last_insert_rowid();
 
-        let mut stmt = tx.prepare("INSERT INTO Folder_File_Junction (folder_id, file_id) VALUES ( ?, ? );")?;
+        let mut stmt =
+            tx.prepare("INSERT INTO Folder_File_Junction (folder_id, file_id) VALUES ( ?, ? );")?;
         stmt.execute(params![folder_id, file_id])?;
 
         Ok(file_id)
     }
 
-    fn add_track(&self, tx: &Transaction, 
-        title: String, filetype: String, album_name: String, date: String, duration: f32, 
-        track_number: u32, disc_number: u32,  album_artist: String,  file_uri_id: i64) -> Result<i64, Box<dyn Error>> {
+    fn add_track(
+        &self,
+        tx: &Transaction,
+        title: String,
+        filetype: String,
+        album_name: String,
+        date: String,
+        duration: f32,
+        track_number: u32,
+        disc_number: u32,
+        album_artist: String,
+        file_uri_id: i64,
+    ) -> Result<i64, Box<dyn Error>> {
         let mut stmt = tx.prepare("INSERT INTO Tracks (title, filetype, album_name, date, duration, track_number, disc_number, album_artist, file_uri_id) VALUES ( ?, ?, ?, ?, ?, ?, ?, ?, ? );")?;
-        stmt.execute(params![title, filetype, album_name, date, duration, track_number, disc_number, album_artist, file_uri_id])?;
+        stmt.execute(params![
+            title,
+            filetype,
+            album_name,
+            date,
+            duration,
+            track_number,
+            disc_number,
+            album_artist,
+            file_uri_id
+        ])?;
         Ok(tx.last_insert_rowid())
     }
 
-    fn add_track_folder_junction(&self, tx: &Transaction, 
-        track_id: i64, folder_id: i64) -> Result<i64, Box<dyn Error>> {
-        let mut stmt = tx.prepare("INSERT INTO Track_Folder_Junction (track_id, folder_id) VALUES ( ?, ? );")?;
+    fn add_track_folder_junction(
+        &self,
+        tx: &Transaction,
+        track_id: i64,
+        folder_id: i64,
+    ) -> Result<i64, Box<dyn Error>> {
+        let mut stmt =
+            tx.prepare("INSERT INTO Track_Folder_Junction (track_id, folder_id) VALUES ( ?, ? );")?;
         stmt.execute(params![track_id, folder_id])?;
         Ok(tx.last_insert_rowid())
     }
 
-    fn add_track_album_junction(&self, tx: &Transaction, 
-        track_id: i64, album_id: i64) -> Result<i64, Box<dyn Error>> {
-        let mut stmt = tx.prepare("INSERT INTO Track_Album_Junction (track_id, album_id) VALUES ( ?, ? );")?;
+    fn add_track_album_junction(
+        &self,
+        tx: &Transaction,
+        track_id: i64,
+        album_id: i64,
+    ) -> Result<i64, Box<dyn Error>> {
+        let mut stmt =
+            tx.prepare("INSERT INTO Track_Album_Junction (track_id, album_id) VALUES ( ?, ? );")?;
         stmt.execute(params![track_id, album_id])?;
         Ok(tx.last_insert_rowid())
     }
 
-    fn add_track_artist_junction(&self, tx: &Transaction, 
-        track_id: i64, artist_id: i64) -> Result<i64, Box<dyn Error>> {
-        let mut stmt = tx.prepare("INSERT INTO Track_Artist_Junction (track_id, artist_id) VALUES ( ?, ? );")?;
+    fn add_track_artist_junction(
+        &self,
+        tx: &Transaction,
+        track_id: i64,
+        artist_id: i64,
+    ) -> Result<i64, Box<dyn Error>> {
+        let mut stmt =
+            tx.prepare("INSERT INTO Track_Artist_Junction (track_id, artist_id) VALUES ( ?, ? );")?;
         stmt.execute(params![track_id, artist_id])?;
         Ok(tx.last_insert_rowid())
     }
 
-    fn add_track_cover_art_junction(&self, tx: &Transaction, 
-        track_id: i64, cover_art_id: i64) -> Result<i64, Box<dyn Error>> {
-        let mut stmt = tx.prepare("INSERT INTO Track_Cover_Art_Junction (track_id, cover_art_id) VALUES ( ?, ? );")?;
+    fn add_track_cover_art_junction(
+        &self,
+        tx: &Transaction,
+        track_id: i64,
+        cover_art_id: i64,
+    ) -> Result<i64, Box<dyn Error>> {
+        let mut stmt = tx.prepare(
+            "INSERT INTO Track_Cover_Art_Junction (track_id, cover_art_id) VALUES ( ?, ? );",
+        )?;
         stmt.execute(params![track_id, cover_art_id])?;
         Ok(tx.last_insert_rowid())
     }
 
-
     // ADD PLAYLIST
-    fn create_playlist(&self, title: String, description: String, tracks: Vec<i64>) -> Result<(), Box<dyn Error>> {       
+    fn create_playlist(
+        &self,
+        title: String,
+        description: String,
+        tracks: Vec<i64>,
+    ) -> Result<(), Box<dyn Error>> {
         let mut conn = self.imp().conn.borrow_mut();
         let conn = conn.as_mut().ok_or("Connection not established")?;
         let tx = conn.transaction()?;
 
-
-        let playlist_id  =  self.add_playlist(&tx, title, description)?;
+        let playlist_id = self.add_playlist(&tx, title, description)?;
 
         for (position, track_id) in tracks.iter().enumerate() {
             self.add_track_to_playlist(&tx, playlist_id, position as i64, *track_id)?;
@@ -799,24 +953,31 @@ impl Database {
         Ok(())
     }
 
-    fn add_playlist(&self, tx: &Transaction, title: String, description: String) -> Result<i64, Box<dyn Error>> {
+    fn add_playlist(
+        &self,
+        tx: &Transaction,
+        title: String,
+        description: String,
+    ) -> Result<i64, Box<dyn Error>> {
         debug!("create_playlist");
         let mut stmt = tx.prepare("INSERT INTO PLAYLISTS (title, description, creation_time, modify_time) VALUES ( ?, ?, ?, ? );")?;
         let creation_time = chrono::offset::Utc::now();
         let modify_time = chrono::offset::Utc::now();
-        stmt.execute(params![
-            title, 
-            description,
-            creation_time,
-            modify_time,
-        ])?;
+        stmt.execute(params![title, description, creation_time, modify_time,])?;
         Ok(tx.last_insert_rowid())
     }
 
-    fn add_track_to_playlist(&self, tx: &Transaction, playlist_id: i64, playlist_position: i64, track_id: i64) -> Result<(), Box<dyn Error>> {
-        let mut stmt = tx.prepare("INSERT INTO Playlist_Entries (playlist_position) VALUES ( ? );")?;
+    fn add_track_to_playlist(
+        &self,
+        tx: &Transaction,
+        playlist_id: i64,
+        playlist_position: i64,
+        track_id: i64,
+    ) -> Result<(), Box<dyn Error>> {
+        let mut stmt =
+            tx.prepare("INSERT INTO Playlist_Entries (playlist_position) VALUES ( ? );")?;
         stmt.execute(params![playlist_position])?;
-        
+
         let playlist_entry_id = tx.last_insert_rowid();
 
         let mut stmt = tx.prepare("INSERT INTO Playlist_Entry_Track_Junction (playlist_entry_id, track_id) VALUES ( ?, ? );")?;
@@ -828,7 +989,11 @@ impl Database {
         Ok(())
     }
 
-    pub fn add_tracks_to_playlist(&self, playlist_id: i64, tracks: Vec<i64>) -> Result<(), Box<dyn Error>> {
+    pub fn add_tracks_to_playlist(
+        &self,
+        playlist_id: i64,
+        tracks: Vec<i64>,
+    ) -> Result<(), Box<dyn Error>> {
         debug!("add_tracks_to_playlist");
 
         let mut conn = self.imp().conn.borrow_mut();
@@ -836,16 +1001,24 @@ impl Database {
         let tx = conn.transaction()?;
 
         if !self.check_if_playlist_exists(&tx, playlist_id)? {
-            add_error_toast(i18n("Tried to add track(s) to playlist that does not exist."));
+            add_error_toast(i18n(
+                "Tried to add track(s) to playlist that does not exist.",
+            ));
             return Ok(());
         }
 
         let statements = |tx: &Transaction| -> Result<(), Box<dyn Error>> {
             let mut stmt = tx.prepare("SELECT count( * ) FROM Playlist_Entry_Playlist_Junction WHERE playlist_id = ( ? );")?;
-            let number_of_playlist_members: i64 = stmt.query_row([playlist_id], |row| row.get(0))?;
-    
+            let number_of_playlist_members: i64 =
+                stmt.query_row([playlist_id], |row| row.get(0))?;
+
             for (i, track_id) in tracks.iter().enumerate() {
-                self.add_track_to_playlist(tx, playlist_id, number_of_playlist_members+i as i64, *track_id)?;
+                self.add_track_to_playlist(
+                    tx,
+                    playlist_id,
+                    number_of_playlist_members + i as i64,
+                    *track_id,
+                )?;
             }
 
             Ok(())
@@ -860,7 +1033,10 @@ impl Database {
         Ok(())
     }
 
-    fn add_artist_image_bulk(&self, payload: Vec<(i64, Option<(String, Vec<u8>)>)>) -> Result<(), Box<dyn Error>> {
+    fn add_artist_image_bulk(
+        &self,
+        payload: Vec<(i64, Option<(String, Vec<u8>)>)>,
+    ) -> Result<(), Box<dyn Error>> {
         let imp = self.imp();
         let mut conn = imp.conn.borrow_mut();
         let conn = conn.as_mut().ok_or("Connection not established")?;
@@ -870,7 +1046,7 @@ impl Database {
             if let Some((url, data)) = image_option {
                 self.add_artist_image_full(&tx, artist_id, url, &data)?;
             } else {
-               self.set_artist_image_fetched(&tx, artist_id, true)?;
+                self.set_artist_image_fetched(&tx, artist_id, true)?;
             }
             //self.add_artist_image_full(&tx, artist_id, image_url, image_data.as_slice())?;
         }
@@ -883,14 +1059,25 @@ impl Database {
 
     //ADD ARTIST IMAGE
 
-    fn add_artist_image_full(&self, tx: &Transaction, artist_id: i64, url: String, data: &[u8]) -> Result<i64, Box<dyn Error>> {
+    fn add_artist_image_full(
+        &self,
+        tx: &Transaction,
+        artist_id: i64,
+        url: String,
+        data: &[u8],
+    ) -> Result<i64, Box<dyn Error>> {
         let image_id = self.add_artist_image(&tx, url, data)?;
         self.add_artist_discog_image_junction(&tx, artist_id, image_id)?;
         Ok(image_id)
     }
 
-    fn set_artist_image_fetched(&self, tx: &Transaction, artist_id: i64, fetched: bool) -> Result<(), Box<dyn Error>> {
-        //SET FETCHED 
+    fn set_artist_image_fetched(
+        &self,
+        tx: &Transaction,
+        artist_id: i64,
+        fetched: bool,
+    ) -> Result<(), Box<dyn Error>> {
+        //SET FETCHED
         let statements = |tx: &Transaction| -> Result<(), Box<dyn Error>> {
             let mut stmt = if fetched {
                 tx.prepare("UPDATE Artists SET image_fetched = 1 WHERE id = ( ? );")?
@@ -905,15 +1092,25 @@ impl Database {
         statements(&tx)?;
         Ok(())
     }
-    
-    fn add_artist_image(&self, tx: &Transaction, url: String, data: &[u8]) -> Result<i64, Box<dyn Error>> {
-        let mut stmt = tx.prepare("INSERT INTO Discog_Artist_Image (url, data, thing) VALUES ( ?, ?, ? );")?;
+
+    fn add_artist_image(
+        &self,
+        tx: &Transaction,
+        url: String,
+        data: &[u8],
+    ) -> Result<i64, Box<dyn Error>> {
+        let mut stmt =
+            tx.prepare("INSERT INTO Discog_Artist_Image (url, data, thing) VALUES ( ?, ?, ? );")?;
         stmt.execute(params![url, data, 0])?;
         Ok(tx.last_insert_rowid())
     }
 
-    fn add_artist_discog_image_junction(&self, tx: &Transaction, 
-        artist_id: i64, image_id: i64) -> Result<i64, Box<dyn Error>> {
+    fn add_artist_discog_image_junction(
+        &self,
+        tx: &Transaction,
+        artist_id: i64,
+        image_id: i64,
+    ) -> Result<i64, Box<dyn Error>> {
         let mut stmt = tx.prepare("INSERT INTO Artist_Discog_Artist_Image_Junction (artist_id, image_id) VALUES ( ?, ? );")?;
         stmt.execute(params![artist_id, image_id])?;
         Ok(tx.last_insert_rowid())
@@ -926,8 +1123,8 @@ impl Database {
 
     //     let image_id = self.add_artist_image(&tx, url, data)?;
     //     self.add_artist_discog_image_junction(&tx, artist_id, image_id)?;
-        
-    //     //SET FETCHED 
+
+    //     //SET FETCHED
     //     let statements = |tx: &Transaction| -> Result<(), Box<dyn Error>> {
     //         let mut stmt = tx.prepare("UPDATE Artists SET image_fetched = 1 WHERE id = ( ? );")?;
     //         stmt.execute(params![artist_id])?;
@@ -941,18 +1138,21 @@ impl Database {
     // }
 
     //ADD PLAY
-    pub fn add_play(&self, track: Rc<Track>, datetime_stamp: DateTime<Utc>) -> Result<(), Box<dyn Error>> {
+    pub fn add_play(
+        &self,
+        track: Rc<Track>,
+        datetime_stamp: DateTime<Utc>,
+    ) -> Result<(), Box<dyn Error>> {
         let conn = self.imp().conn.borrow();
         let conn = conn.as_ref().ok_or("Connection not established add_play")?;
         let mut stmt = conn.prepare("INSERT INTO PLAYS (playtime, track_id, album_id, album_artist_id) VALUES ( ?, ?, ?, ? );")?;
         stmt.execute(params![
-            datetime_stamp.timestamp(), 
+            datetime_stamp.timestamp(),
             track.id(),
             track.album_id(),
             track.artist_id(),
         ])?;
         Ok(())
-
     }
 
     /*
@@ -962,7 +1162,7 @@ impl Database {
     pub fn query_artist_images(&self) -> Result<Vec<(i64, String, Vec<u8>)>, Box<dyn Error>> {
         let conn = self.imp().conn.borrow();
         let conn = conn.as_ref().ok_or("Connection not established")?;
-        
+
         let mut stmt = conn.prepare("SELECT id, url, data FROM Discog_Artist_Image;")?;
         let rows = stmt.query_map([], |row| {
             let id: i64 = row.get(0)?;
@@ -979,24 +1179,30 @@ impl Database {
         Ok(result)
     }
 
-    fn check_if_folder_exists(&self, tx: &Transaction, music_folder: String) -> Result<bool, Box<dyn Error>>{
-        let mut stmt = tx.prepare("SELECT EXISTS(SELECT 1 FROM Music_Folders WHERE uri = (?)  LIMIT 1);")?;
+    fn check_if_folder_exists(
+        &self,
+        tx: &Transaction,
+        music_folder: String,
+    ) -> Result<bool, Box<dyn Error>> {
+        let mut stmt =
+            tx.prepare("SELECT EXISTS(SELECT 1 FROM Music_Folders WHERE uri = (?)  LIMIT 1);")?;
         let exists: bool = match stmt.query_row([music_folder], |row| row.get::<usize, i64>(0)) {
-            Ok(count) => {
-                count > 0
-            },
+            Ok(count) => count > 0,
             Err(e) => return Err(Box::new(e)),
         };
 
         Ok(exists)
     }
 
-    fn check_if_playlist_exists(&self, tx: &Transaction, playlist_id: i64) -> Result<bool, Box<dyn Error>>{
-        let mut stmt = tx.prepare("SELECT EXISTS(SELECT 1 FROM Playlists WHERE id = (?)  LIMIT 1);")?;
+    fn check_if_playlist_exists(
+        &self,
+        tx: &Transaction,
+        playlist_id: i64,
+    ) -> Result<bool, Box<dyn Error>> {
+        let mut stmt =
+            tx.prepare("SELECT EXISTS(SELECT 1 FROM Playlists WHERE id = (?)  LIMIT 1);")?;
         let exists: bool = match stmt.query_row([playlist_id], |row| row.get::<usize, i64>(0)) {
-            Ok(count) => {
-                count > 0
-            },
+            Ok(count) => count > 0,
             Err(e) => return Err(Box::new(e)),
         };
 
@@ -1010,12 +1216,12 @@ impl Database {
         Ok(count)
     }
 
-
-
     // MODEL POPULATION QUERIES
 
     // Used in model population
-    pub fn query_playlists(&self) -> Result<Vec<(i64, String, String, DateTime<Utc>, DateTime<Utc>)>, Box<dyn Error>> {
+    pub fn query_playlists(
+        &self,
+    ) -> Result<Vec<(i64, String, String, DateTime<Utc>, DateTime<Utc>)>, Box<dyn Error>> {
         let conn = self.imp().conn.borrow();
         let conn = conn.as_ref().ok_or("Connection not established")?;
         let mut stmt = conn.prepare("SELECT * FROM playlists;")?;
@@ -1036,7 +1242,10 @@ impl Database {
         Ok(result)
     }
 
-    pub fn query_playlist_by_id(&self, id: u64) -> Result<(i64, String, String, DateTime<Utc>, DateTime<Utc>), Box<dyn Error>> {
+    pub fn query_playlist_by_id(
+        &self,
+        id: u64,
+    ) -> Result<(i64, String, String, DateTime<Utc>, DateTime<Utc>), Box<dyn Error>> {
         let conn = self.imp().conn.borrow();
         let conn = conn.as_ref().ok_or("Connection not established")?;
         let mut stmt = conn.prepare("SELECT * FROM playlists WHERE id = (?);")?;
@@ -1063,7 +1272,7 @@ impl Database {
     pub fn query_playlist_entries(&self) -> Result<Vec<(i64, i64, i64, i64)>, Box<dyn Error>> {
         let conn = self.imp().conn.borrow();
         let conn = conn.as_ref().ok_or("Connection not established")?;
-        
+
         let mut stmt = conn.prepare("SELECT * FROM playlist_entries;")?;
         let rows = stmt.query_map([], |row| {
             let id: i64 = row.get(0)?;
@@ -1078,7 +1287,9 @@ impl Database {
             let mut stmt = conn.prepare("SELECT playlist_id FROM Playlist_Entry_Playlist_Junction WHERE playlist_entry_id = (?);")?;
             let playlist_id: i64 = stmt.query_row([playlist_entry_id], |row| row.get(0))?;
 
-            let mut stmt = conn.prepare("SELECT track_id FROM Playlist_Entry_Track_Junction WHERE playlist_entry_id = (?);")?;
+            let mut stmt = conn.prepare(
+                "SELECT track_id FROM Playlist_Entry_Track_Junction WHERE playlist_entry_id = (?);",
+            )?;
             let track_id: i64 = stmt.query_row([playlist_entry_id], |row| row.get(0))?;
 
             result.push((playlist_entry_id, playlist_id, playlist_position, track_id));
@@ -1087,10 +1298,13 @@ impl Database {
         Ok(result)
     }
 
-    pub fn query_playlist_entries_by_playlist_id(&self, playlist_id: i64) -> Result<Vec<(i64, i64, i64)>, Box<dyn Error>> {
+    pub fn query_playlist_entries_by_playlist_id(
+        &self,
+        playlist_id: i64,
+    ) -> Result<Vec<(i64, i64, i64)>, Box<dyn Error>> {
         let conn = self.imp().conn.borrow();
         let conn = conn.as_ref().ok_or("Connection not established")?;
-        
+
         let mut stmt = conn.prepare("SELECT playlist_entry_id FROM Playlist_Entry_Playlist_Junction WHERE playlist_id = (?);")?;
         let rows = stmt.query_map([playlist_id], |row| {
             let id: i64 = row.get(0)?;
@@ -1101,10 +1315,13 @@ impl Database {
         for row in rows {
             let playlist_entry_id = row?;
 
-            let mut stmt = conn.prepare("SELECT playlist_position FROM Playlist_Entries WHERE id = (?);")?;
+            let mut stmt =
+                conn.prepare("SELECT playlist_position FROM Playlist_Entries WHERE id = (?);")?;
             let playlist_position: i64 = stmt.query_row([playlist_entry_id], |row| row.get(0))?;
 
-            let mut stmt = conn.prepare("SELECT track_id FROM Playlist_Entry_Track_Junction WHERE playlist_entry_id = (?);")?;
+            let mut stmt = conn.prepare(
+                "SELECT track_id FROM Playlist_Entry_Track_Junction WHERE playlist_entry_id = (?);",
+            )?;
             let track_id: i64 = stmt.query_row([playlist_entry_id], |row| row.get(0))?;
 
             result.push((playlist_entry_id, playlist_position, track_id));
@@ -1113,7 +1330,7 @@ impl Database {
         Ok(result)
     }
 
-     // Used in model population
+    // Used in model population
     pub fn query_art(&self) -> Result<Vec<(i64, Vec<u8>)>, Box<dyn Error>> {
         let conn = self.imp().conn.borrow();
         let conn = conn.as_ref().ok_or("Connection not established")?;
@@ -1143,7 +1360,7 @@ impl Database {
         Ok((id as i64, data))
     }
 
-     // Used in model population
+    // Used in model population
     pub fn query_genres(&self) -> Result<Vec<(i64, String, Option<Vec<i64>>)>, Box<dyn Error>> {
         let conn = self.imp().conn.borrow();
         let conn = conn.as_ref().ok_or("Connection not established")?;
@@ -1159,7 +1376,8 @@ impl Database {
             let (genre_id, genre_name) = row?;
 
             let mut albums = Vec::new();
-            let mut stmt = conn.prepare("SELECT album_id from Album_Genre_Junction WHERE genre_id = (?);")?;
+            let mut stmt =
+                conn.prepare("SELECT album_id from Album_Genre_Junction WHERE genre_id = (?);")?;
             let album_rows = stmt.query_map([genre_id], |row| {
                 let album_id: i64 = row.get(0)?;
                 Ok(album_id)
@@ -1169,7 +1387,7 @@ impl Database {
                 let album_id = r?;
                 albums.push(album_id);
             }
-            
+
             if albums.is_empty() {
                 result.push((genre_id, genre_name, None));
             } else {
@@ -1191,7 +1409,9 @@ impl Database {
     }
 
     // Used in model population
-    pub fn query_artists(&self) -> Result<Vec<(i64, String, Option<i64>, Option<Vec<i64>>)>, Box<dyn Error>> {
+    pub fn query_artists(
+        &self,
+    ) -> Result<Vec<(i64, String, Option<i64>, Option<Vec<i64>>)>, Box<dyn Error>> {
         let conn = self.imp().conn.borrow();
         let conn = conn.as_ref().ok_or("Connection not established")?;
         let mut stmt = conn.prepare("SELECT * FROM Artists;")?;
@@ -1204,11 +1424,14 @@ impl Database {
         let mut result = Vec::new();
         for row in rows {
             let (artist_id, artist_name) = row?;
-            let mut stmt = conn.prepare("SELECT image_id FROM Artist_Discog_Artist_Image_Junction WHERE artist_id = (?);")?;
+            let mut stmt = conn.prepare(
+                "SELECT image_id FROM Artist_Discog_Artist_Image_Junction WHERE artist_id = (?);",
+            )?;
             let image_id: Option<i64> = stmt.query_row([artist_id], |row| row.get(0)).optional()?;
-            
+
             let mut albums = Vec::new();
-            let mut stmt = conn.prepare("SELECT album_id from Album_Artist_Junction WHERE artist_id = (?);")?;
+            let mut stmt =
+                conn.prepare("SELECT album_id from Album_Artist_Junction WHERE artist_id = (?);")?;
             let album_rows = stmt.query_map([artist_id], |row| {
                 let album_id: i64 = row.get(0)?;
                 Ok(album_id)
@@ -1218,7 +1441,7 @@ impl Database {
                 let album_id = r?;
                 albums.push(album_id);
             }
-            
+
             if albums.is_empty() {
                 result.push((artist_id, artist_name, image_id, None));
             } else {
@@ -1239,8 +1462,10 @@ impl Database {
         Ok((id as i64, name))
     }
 
-     // Used in model population
-    pub fn query_albums(&self) -> Result<Vec<(i64, String, String, String, String, Option<i64>, i64)>, Box<dyn Error>> {
+    // Used in model population
+    pub fn query_albums(
+        &self,
+    ) -> Result<Vec<(i64, String, String, String, String, Option<i64>, i64)>, Box<dyn Error>> {
         let conn = self.imp().conn.borrow();
         let conn = conn.as_ref().ok_or("Connection not established")?;
         let mut stmt = conn.prepare("SELECT * FROM albums;")?;
@@ -1255,24 +1480,49 @@ impl Database {
             Ok((id, title, album_artist, date, genre))
         })?;
 
-
         let mut result = Vec::new();
         for row in rows {
             let (album_id, title, artist, date, genre) = row?;
 
-            let mut stmt = conn.prepare("SELECT artist_id FROM Album_Artist_Junction WHERE album_id = ?;")?;
+            let mut stmt =
+                conn.prepare("SELECT artist_id FROM Album_Artist_Junction WHERE album_id = ?;")?;
             let album_artist_id: i64 = stmt.query_row([album_id], |row| row.get(0))?;
 
-            let mut stmt = conn.prepare("SELECT cover_art_id FROM Album_Cover_Art_Junction WHERE album_id = ?;")?;
-            let cover_art_id: Option<i64> = stmt.query_row([album_id], |row| row.get(0)).optional()?;
-                          
-            result.push((album_id, title, artist, date, genre, cover_art_id, album_artist_id));
+            let mut stmt = conn
+                .prepare("SELECT cover_art_id FROM Album_Cover_Art_Junction WHERE album_id = ?;")?;
+            let cover_art_id: Option<i64> =
+                stmt.query_row([album_id], |row| row.get(0)).optional()?;
+
+            result.push((
+                album_id,
+                title,
+                artist,
+                date,
+                genre,
+                cover_art_id,
+                album_artist_id,
+            ));
         }
 
         Ok(result)
     }
 
-    pub fn query_album_by_id(&self, id: u64) -> Result<(i64, String, String, String, String, Option<i64>, i64, Option<i64>), Box<dyn Error>> {
+    pub fn query_album_by_id(
+        &self,
+        id: u64,
+    ) -> Result<
+        (
+            i64,
+            String,
+            String,
+            String,
+            String,
+            Option<i64>,
+            i64,
+            Option<i64>,
+        ),
+        Box<dyn Error>,
+    > {
         let conn = self.imp().conn.borrow();
         let conn = conn.as_ref().ok_or("Connection not established")?;
         let mut stmt = conn.prepare("SELECT * FROM Albums WHERE id = (?);")?;
@@ -1289,16 +1539,29 @@ impl Database {
         for row in rows {
             let (album_id, title, artist, date, genre) = row?;
 
-            let mut stmt = conn.prepare("SELECT artist_id FROM Album_Artist_Junction WHERE album_id = ?;")?;
+            let mut stmt =
+                conn.prepare("SELECT artist_id FROM Album_Artist_Junction WHERE album_id = ?;")?;
             let album_artist_id: i64 = stmt.query_row([album_id], |row| row.get(0))?;
 
-            let mut stmt = conn.prepare("SELECT cover_art_id FROM Album_Cover_Art_Junction WHERE album_id = ?;")?;
-            let cover_art_id: Option<i64> = stmt.query_row([album_id], |row| row.get(0)).optional()?;
-            
-            let mut stmt = conn.prepare("SELECT genre_id FROM Album_Genre_Junction WHERE album_id = ?;")?;
+            let mut stmt = conn
+                .prepare("SELECT cover_art_id FROM Album_Cover_Art_Junction WHERE album_id = ?;")?;
+            let cover_art_id: Option<i64> =
+                stmt.query_row([album_id], |row| row.get(0)).optional()?;
+
+            let mut stmt =
+                conn.prepare("SELECT genre_id FROM Album_Genre_Junction WHERE album_id = ?;")?;
             let genre_id: Option<i64> = stmt.query_row([album_id], |row| row.get(0)).optional()?;
-                
-            result.push((album_id, title, artist, date, genre, cover_art_id, album_artist_id, genre_id));
+
+            result.push((
+                album_id,
+                title,
+                artist,
+                date,
+                genre,
+                cover_art_id,
+                album_artist_id,
+                genre_id,
+            ));
         }
 
         let result = result.remove(0);
@@ -1306,9 +1569,27 @@ impl Database {
         Ok(result)
     }
 
-
     // Used in model population
-    pub fn query_tracks(&self) -> Result<Vec<(i64, String, String, String, String, f64, i64, i64, String, String, i64, i64, Option<i64>)>, Box<dyn Error>> {
+    pub fn query_tracks(
+        &self,
+    ) -> Result<
+        Vec<(
+            i64,
+            String,
+            String,
+            String,
+            String,
+            f64,
+            i64,
+            i64,
+            String,
+            String,
+            i64,
+            i64,
+            Option<i64>,
+        )>,
+        Box<dyn Error>,
+    > {
         let conn = self.imp().conn.borrow();
         let conn = conn.as_ref().ok_or("Connection not established")?;
         let mut stmt = conn.prepare("SELECT * FROM tracks;")?;
@@ -1323,26 +1604,66 @@ impl Database {
             let disc_number: i64 = row.get(7)?;
             let album_artist: String = row.get(8)?;
             let file_uri_id: i64 = row.get(9)?;
-            Ok((id, title, filetype, album_name, date, duration, track_number, disc_number, album_artist, file_uri_id))
+            Ok((
+                id,
+                title,
+                filetype,
+                album_name,
+                date,
+                duration,
+                track_number,
+                disc_number,
+                album_artist,
+                file_uri_id,
+            ))
         })?;
 
         let mut result = Vec::new();
         for row in rows {
-            let (track_id, title, filetype, album_name, date, duration, track_number, disc_number, album_artist, file_uri_id) = row?;
+            let (
+                track_id,
+                title,
+                filetype,
+                album_name,
+                date,
+                duration,
+                track_number,
+                disc_number,
+                album_artist,
+                file_uri_id,
+            ) = row?;
 
-            let mut stmt = conn.prepare("SELECT album_id FROM Track_Album_Junction WHERE track_id = ?;")?;
+            let mut stmt =
+                conn.prepare("SELECT album_id FROM Track_Album_Junction WHERE track_id = ?;")?;
             let album_id: i64 = stmt.query_row([track_id], |row| row.get(0))?;
-            
-            let mut stmt = conn.prepare("SELECT artist_id FROM Track_Artist_Junction WHERE track_id = ?;")?;
+
+            let mut stmt =
+                conn.prepare("SELECT artist_id FROM Track_Artist_Junction WHERE track_id = ?;")?;
             let artist_id: i64 = stmt.query_row([track_id], |row| row.get(0))?;
 
-            let mut stmt = conn.prepare("SELECT cover_art_id FROM Track_Cover_Art_Junction WHERE track_id = ?;")?;
-            let cover_art_id: Option<i64> = stmt.query_row([track_id], |row| row.get(0)).optional()?;
+            let mut stmt = conn
+                .prepare("SELECT cover_art_id FROM Track_Cover_Art_Junction WHERE track_id = ?;")?;
+            let cover_art_id: Option<i64> =
+                stmt.query_row([track_id], |row| row.get(0)).optional()?;
 
             let mut stmt = conn.prepare("SELECT uri FROM File_URIs WHERE id = ?")?;
             let uri: String = stmt.query_row([file_uri_id], |row| row.get(0))?;
 
-            result.push((track_id, title, filetype, album_name, date, duration, track_number, disc_number, album_artist, uri, artist_id, album_id, cover_art_id));
+            result.push((
+                track_id,
+                title,
+                filetype,
+                album_name,
+                date,
+                duration,
+                track_number,
+                disc_number,
+                album_artist,
+                uri,
+                artist_id,
+                album_id,
+                cover_art_id,
+            ));
         }
 
         Ok(result)
@@ -1352,18 +1673,18 @@ impl Database {
     pub fn query_n_playlists(&self, playlist_id: Option<i64>) -> Result<i64, Box<dyn Error>> {
         let conn = self.imp().conn.borrow();
         let conn = conn.as_ref().ok_or("Connection not established")?;
-        
+
         match playlist_id {
             Some(playlist_id) => {
                 let mut stmt = conn.prepare("SELECT count( * ) FROM playlists WHERE id = (?);")?;
                 let count = stmt.query_row([playlist_id], |row| row.get::<usize, i64>(0))?;
                 return Ok(count);
-            },
+            }
             None => {
                 let mut stmt = conn.prepare("SELECT count( * ) FROM playlists;")?;
                 let count = stmt.query_row([], |row| row.get::<usize, i64>(0))?;
                 return Ok(count);
-            },
+            }
         }
     }
 
@@ -1387,7 +1708,7 @@ impl Database {
     //         if result.len() >= 20 {
     //             break;
     //         }
-           
+
     //     }
 
     //     Ok(result)
@@ -1413,22 +1734,30 @@ impl Database {
     //         if result.len() >= 20 {
     //             break;
     //         }
-           
+
     //     }
     //     Ok(result)
     // }
 
     // ######
-    // # MODIFY VALUES 
+    // # MODIFY VALUES
     // ######
 
-    pub fn update_album_art(&self, tx: &Transaction, album_id: i64, album_art: i64,) -> Result<(), Box<dyn Error>> {
-        let mut stmt = tx.prepare("SELECT cover_art_id FROM Album_Cover_Art_Junction WHERE album_id = (?);")?;
+    pub fn update_album_art(
+        &self,
+        tx: &Transaction,
+        album_id: i64,
+        album_art: i64,
+    ) -> Result<(), Box<dyn Error>> {
+        let mut stmt =
+            tx.prepare("SELECT cover_art_id FROM Album_Cover_Art_Junction WHERE album_id = (?);")?;
         let cover_art_id: Option<i64> = stmt.query_row([album_id], |row| row.get(0)).optional()?;
 
         if let Some(id) = cover_art_id {
             if id != album_art {
-                let mut stmt = tx.prepare("UPDATE Album_Cover_Art_Junction SET cover_art_id = (?) WHERE album_id = (?);")?;
+                let mut stmt = tx.prepare(
+                    "UPDATE Album_Cover_Art_Junction SET cover_art_id = (?) WHERE album_id = (?);",
+                )?;
                 stmt.execute(params![album_art, album_id])?;
             }
         } else {
@@ -1438,7 +1767,12 @@ impl Database {
         Ok(())
     }
 
-    pub fn change_playlist_title_and_or_description(&self, playlist_id: i64, new_title: Option<String>, new_description: Option<String>) -> Result<(), Box<dyn Error>> {
+    pub fn change_playlist_title_and_or_description(
+        &self,
+        playlist_id: i64,
+        new_title: Option<String>,
+        new_description: Option<String>,
+    ) -> Result<(), Box<dyn Error>> {
         let mut conn = self.imp().conn.borrow_mut();
         let conn = conn.as_mut().ok_or("Connection not established")?;
         let tx = conn.transaction()?;
@@ -1450,46 +1784,74 @@ impl Database {
         if !new_description.is_none() {
             self.modify_playlist_description(&tx, playlist_id, new_description.unwrap())?;
         }
-        
+
         self.update_playlist_modify_time(&tx, playlist_id)?;
-        
+
         tx.commit()?;
-        send!(self.imp().model_sender, ModelAction::PopulatePlaylist(playlist_id as u64));
+        send!(
+            self.imp().model_sender,
+            ModelAction::PopulatePlaylist(playlist_id as u64)
+        );
         Ok(())
     }
 
-
-    pub fn rename_playlist(&self, playlist_id: i64, new_title: String) -> Result<(), Box<dyn Error>> {
+    pub fn rename_playlist(
+        &self,
+        playlist_id: i64,
+        new_title: String,
+    ) -> Result<(), Box<dyn Error>> {
         let mut conn = self.imp().conn.borrow_mut();
         let conn = conn.as_mut().ok_or("Connection not established")?;
         let tx = conn.transaction()?;
         self.modify_playlist_title(&tx, playlist_id, new_title)?;
         self.update_playlist_modify_time(&tx, playlist_id)?;
         tx.commit()?;
-        send!(self.imp().model_sender, ModelAction::PopulatePlaylist(playlist_id as u64));
+        send!(
+            self.imp().model_sender,
+            ModelAction::PopulatePlaylist(playlist_id as u64)
+        );
         Ok(())
     }
 
-    fn modify_playlist_title(&self, tx: &Transaction, playlist_id: i64, new_title: String) -> Result<(), Box<dyn Error>> {
+    fn modify_playlist_title(
+        &self,
+        tx: &Transaction,
+        playlist_id: i64,
+        new_title: String,
+    ) -> Result<(), Box<dyn Error>> {
         let mut stmt = tx.prepare("UPDATE Playlists SET title = (?) WHERE id = (?);")?;
         stmt.execute(params![new_title, playlist_id])?;
         Ok(())
     }
 
-    fn modify_playlist_description(&self, tx: &Transaction, playlist_id: i64, new_description: String) -> Result<(), Box<dyn Error>> {
+    fn modify_playlist_description(
+        &self,
+        tx: &Transaction,
+        playlist_id: i64,
+        new_description: String,
+    ) -> Result<(), Box<dyn Error>> {
         let mut stmt = tx.prepare("UPDATE Playlists SET description = (?) WHERE id = (?);")?;
         stmt.execute(params![new_description, playlist_id])?;
         Ok(())
     }
 
-    fn update_playlist_modify_time(&self, tx: &Transaction, playlist_id: i64) -> Result<(), Box<dyn Error>> {
+    fn update_playlist_modify_time(
+        &self,
+        tx: &Transaction,
+        playlist_id: i64,
+    ) -> Result<(), Box<dyn Error>> {
         let mut stmt = tx.prepare("UPDATE Playlists SET modify_time = (?) WHERE id = (?);")?;
         let modify_time = chrono::offset::Utc::now();
         stmt.execute(params![modify_time, playlist_id])?;
         Ok(())
     }
 
-    fn reorder_playlist(&self, playlist_id: i64, old_position: usize, new_position: usize) -> Result<(), Box<dyn Error>> {
+    fn reorder_playlist(
+        &self,
+        playlist_id: i64,
+        old_position: usize,
+        new_position: usize,
+    ) -> Result<(), Box<dyn Error>> {
         let mut conn = self.imp().conn.borrow_mut();
         let conn = conn.as_mut().ok_or("Connection not established")?;
         let tx = conn.transaction()?;
@@ -1497,23 +1859,31 @@ impl Database {
         let mut entries = self.query_ordered_vec_of_playlist_entries(&tx, playlist_id)?;
         let temp = entries.remove(old_position);
         entries.insert(new_position, temp);
-        
+
         for (pos, entry) in entries.iter().enumerate() {
             self.modify_playlist_entry_positition_by_entry_id(&tx, *entry, pos)?;
         }
-        
+
         self.update_playlist_modify_time(&tx, playlist_id)?;
-        
+
         tx.commit()?;
-        send!(self.imp().model_sender, ModelAction::PopulatePlaylist(playlist_id as u64));
+        send!(
+            self.imp().model_sender,
+            ModelAction::PopulatePlaylist(playlist_id as u64)
+        );
         Ok(())
     }
 
-    fn query_ordered_vec_of_playlist_entries(&self, tx: &Transaction, playlist_id: i64) -> Result<Vec<i64>, Box<dyn Error>> {
+    fn query_ordered_vec_of_playlist_entries(
+        &self,
+        tx: &Transaction,
+        playlist_id: i64,
+    ) -> Result<Vec<i64>, Box<dyn Error>> {
         debug!("SELECT count( * ) FROM Playlist_Entry_Playlist_Junction WHERE playlist_id = (?)");
 
-
-        let mut stmt = tx.prepare("SELECT count( * ) FROM Playlist_Entry_Playlist_Junction WHERE playlist_id = (?)")?;
+        let mut stmt = tx.prepare(
+            "SELECT count( * ) FROM Playlist_Entry_Playlist_Junction WHERE playlist_id = (?)",
+        )?;
         let count: usize = stmt.query_row([playlist_id], |row| row.get(0))?;
 
         let mut result = vec![0; count];
@@ -1528,8 +1898,9 @@ impl Database {
 
         for r in rows {
             let playlist_entry_id = r?;
-            
-            let mut stmt = tx.prepare("SELECT playlist_position FROM Playlist_Entries WHERE id = (?)")?;
+
+            let mut stmt =
+                tx.prepare("SELECT playlist_position FROM Playlist_Entries WHERE id = (?)")?;
             let playlist_position: usize = stmt.query_row([playlist_entry_id], |row| row.get(0))?;
 
             _ = std::mem::replace(&mut result[playlist_position], playlist_entry_id);
@@ -1540,34 +1911,36 @@ impl Database {
         Ok(result)
     }
 
-
     // fn modify_playlist_entry_positition(&self, tx: &Transaction, playlist_entry_id: i64, old_position: usize, new_position: usize) -> Result<(), Box<dyn Error>> {
     //     let mut stmt = tx.prepare("UPDATE Playlist_Entries SET playlist_position = (?) WHERE id = (?) AND playlist_position = (?);")?;
     //     stmt.execute(params![new_position, playlist_entry_id, old_position])?;
     //     Ok(())
     // }
 
-    fn modify_playlist_entry_positition_by_entry_id(&self, tx: &Transaction, playlist_entry_id: i64, new_position: usize) -> Result<(), Box<dyn Error>> {
-        let mut stmt = tx.prepare("UPDATE Playlist_Entries SET playlist_position = (?) WHERE id = (?);")?;
+    fn modify_playlist_entry_positition_by_entry_id(
+        &self,
+        tx: &Transaction,
+        playlist_entry_id: i64,
+        new_position: usize,
+    ) -> Result<(), Box<dyn Error>> {
+        let mut stmt =
+            tx.prepare("UPDATE Playlist_Entries SET playlist_position = (?) WHERE id = (?);")?;
         stmt.execute(params![new_position, playlist_entry_id])?;
         Ok(())
     }
 
-
     // ######
-    // # REMOVE VALUES 
+    // # REMOVE VALUES
     // ######
-    
 
     //REMOVE MUSIC FOLDER
 
     pub fn try_remove_folder(&self, path: String) -> Result<(), Box<dyn Error>> {
         {
-           
             let mut conn = self.imp().conn.borrow_mut();
             let conn = conn.as_mut().ok_or("Connection not established")?;
             let tx = conn.transaction()?;
-            
+
             self.remove_music_folder(&tx, path.clone())?;
             self.check_loaded(&tx)?;
             tx.commit()?;
@@ -1576,14 +1949,15 @@ impl Database {
         let mut folders = imp.folders.borrow_mut().clone();
         folders.remove(&path);
         let music_folders = folders.into_iter().collect::<Vec<String>>();
-        imp.settings.set_strv("music-folders", music_folders.as_slice())?;
+        imp.settings
+            .set_strv("music-folders", music_folders.as_slice())?;
 
         Ok(())
     }
 
-    fn remove_music_folder(&self, tx: &Transaction, path: String) -> Result<(), Box<dyn Error>> {        
+    fn remove_music_folder(&self, tx: &Transaction, path: String) -> Result<(), Box<dyn Error>> {
         debug!("remove_music_folder: {:?}", path);
-        
+
         //GET ID OF FOLDER FROM FOLDER TABLE
         let mut stmt = tx.prepare("SELECT id FROM Music_Folders WHERE uri = (?)")?;
         let folder_id: i64 = stmt.query_row([path], |row| row.get(0))?;
@@ -1591,15 +1965,16 @@ impl Database {
         debug!("folder id: {}", folder_id);
 
         //GET ALL TRACK IDS WITH FOLDER FROM TRACK URI JUNCTION TABLE Track_Folder_Junction
-        let mut stmt = tx.prepare("SELECT track_id FROM Track_Folder_Junction WHERE folder_id = (?);")?;
+        let mut stmt =
+            tx.prepare("SELECT track_id FROM Track_Folder_Junction WHERE folder_id = (?);")?;
         let rows = stmt.query_map([folder_id], |row| {
             let track_id: i64 = row.get(0)?;
             Ok(track_id)
         })?;
 
         //need to avoid foreign key constraint -> delete all junctions before track deletion
-        // (Track_Cover_Art_Junction) 
-        // Track_Artist_Junction) 
+        // (Track_Cover_Art_Junction)
+        // Track_Artist_Junction)
         // (Track_Album_Junction)
         // Playlist_Entry_Track_Junction
         // Plays
@@ -1615,7 +1990,8 @@ impl Database {
             stmt.execute(params![track_id])?;
 
             debug!("removing Track_Cover_Art_Junction track_id = {}", track_id);
-            let mut stmt = tx.prepare("DELETE FROM Track_Cover_Art_Junction WHERE track_id = (?);")?;
+            let mut stmt =
+                tx.prepare("DELETE FROM Track_Cover_Art_Junction WHERE track_id = (?);")?;
             stmt.execute(params![track_id])?;
 
             debug!("removing Track_Artist_Junction track_id = {}", track_id);
@@ -1626,11 +2002,14 @@ impl Database {
             let mut stmt = tx.prepare("DELETE FROM Track_Album_Junction WHERE track_id = (?);")?;
             stmt.execute(params![track_id])?;
 
-            debug!("removing Playlist_Entry_Track_Junction track_id = {}", track_id);
-            let mut stmt = tx.prepare("DELETE FROM Playlist_Entry_Track_Junction WHERE track_id = (?);")?;
+            debug!(
+                "removing Playlist_Entry_Track_Junction track_id = {}",
+                track_id
+            );
+            let mut stmt =
+                tx.prepare("DELETE FROM Playlist_Entry_Track_Junction WHERE track_id = (?);")?;
             stmt.execute(params![track_id])?;
 
- 
             debug!("removing Plays track_id = {}", track_id);
             let mut stmt = tx.prepare("DELETE FROM Plays WHERE track_id = (?);")?;
             stmt.execute(params![track_id])?;
@@ -1640,7 +2019,7 @@ impl Database {
             stmt.execute(params![track_id])?;
         }
 
-        //delete album, artist, playlist, play if none 
+        //delete album, artist, playlist, play if none
         self.prune_all(&tx)?;
 
         let mut stmt = tx.prepare("DELETE FROM Music_Folders WHERE id = (?);")?;
@@ -1649,7 +2028,6 @@ impl Database {
 
         Ok(())
     }
-
 
     //PRUNE ORPHANS
 
@@ -1677,17 +2055,22 @@ impl Database {
             let album_id = row?;
 
             //if there are no tracks in the album, it should not exist
-            let mut stmt = tx.prepare("SELECT EXISTS(SELECT 1 FROM Track_Album_Junction WHERE album_id = (?) LIMIT 1);")?;
+            let mut stmt = tx.prepare(
+                "SELECT EXISTS(SELECT 1 FROM Track_Album_Junction WHERE album_id = (?) LIMIT 1);",
+            )?;
             let exists: i32 = stmt.query_row([album_id], |row| row.get(0))?;
-            
+
             if exists == 0 {
-                let mut stmt = tx.prepare("DELETE FROM Album_Cover_Art_Junction WHERE album_id = (?);")?;
+                let mut stmt =
+                    tx.prepare("DELETE FROM Album_Cover_Art_Junction WHERE album_id = (?);")?;
                 stmt.execute(params![album_id])?;
 
-                let mut stmt = tx.prepare("DELETE FROM Album_Artist_Junction WHERE album_id = (?);")?;
+                let mut stmt =
+                    tx.prepare("DELETE FROM Album_Artist_Junction WHERE album_id = (?);")?;
                 stmt.execute(params![album_id])?;
 
-                let mut stmt = tx.prepare("DELETE FROM Album_Genre_Junction WHERE album_id = (?);")?;
+                let mut stmt =
+                    tx.prepare("DELETE FROM Album_Genre_Junction WHERE album_id = (?);")?;
                 stmt.execute(params![album_id])?;
 
                 let mut stmt = tx.prepare("DELETE FROM Albums WHERE id = (?);")?;
@@ -1696,7 +2079,6 @@ impl Database {
         }
         Ok(())
     }
-
 
     fn prune_genres(&self, tx: &Transaction) -> Result<(), Box<dyn Error>> {
         debug!("prune_genres");
@@ -1709,9 +2091,11 @@ impl Database {
         for row in rows {
             let genre_id = row?;
 
-            let mut stmt = tx.prepare("SELECT EXISTS(SELECT 1 FROM Album_Genre_Junction WHERE genre_id = (?) LIMIT 1);")?;
+            let mut stmt = tx.prepare(
+                "SELECT EXISTS(SELECT 1 FROM Album_Genre_Junction WHERE genre_id = (?) LIMIT 1);",
+            )?;
             let exists: i32 = stmt.query_row([genre_id], |row| row.get(0))?;
-            
+
             if exists == 0 {
                 let mut stmt = tx.prepare("DELETE FROM Genres WHERE id = (?);")?;
                 stmt.execute(params![genre_id])?;
@@ -1732,18 +2116,19 @@ impl Database {
         for row in rows {
             let file_uri_id = row?;
 
-            let mut stmt = tx.prepare("SELECT EXISTS(SELECT 1 FROM Tracks WHERE file_uri_id = (?) LIMIT 1);")?;
+            let mut stmt =
+                tx.prepare("SELECT EXISTS(SELECT 1 FROM Tracks WHERE file_uri_id = (?) LIMIT 1);")?;
             let exists: i32 = stmt.query_row([file_uri_id], |row| row.get(0))?;
-            
+
             if exists == 0 {
-                let mut stmt = tx.prepare("DELETE FROM Folder_File_Junction WHERE file_id = (?);")?;
+                let mut stmt =
+                    tx.prepare("DELETE FROM Folder_File_Junction WHERE file_id = (?);")?;
                 stmt.execute(params![file_uri_id])?;
 
                 let mut stmt = tx.prepare("DELETE FROM File_URIs WHERE id = (?);")?;
                 stmt.execute(params![file_uri_id])?;
             }
         }
-
 
         Ok(())
     }
@@ -1761,9 +2146,11 @@ impl Database {
 
             let mut stmt = tx.prepare("SELECT EXISTS(SELECT 1 FROM Album_Artist_Junction WHERE artist_id = (?) LIMIT 1) OR EXISTS(SELECT 1 FROM Track_Artist_Junction WHERE artist_id = (?) LIMIT 1);")?;
             let exists: i32 = stmt.query_row([artist_id, artist_id], |row| row.get(0))?;
-            
+
             if exists == 0 {
-                let mut stmt = tx.prepare("DELETE FROM Artist_Discog_Artist_Image_Junction WHERE artist_id = (?);")?;
+                let mut stmt = tx.prepare(
+                    "DELETE FROM Artist_Discog_Artist_Image_Junction WHERE artist_id = (?);",
+                )?;
                 stmt.execute(params![artist_id])?;
 
                 let mut stmt = tx.prepare("DELETE FROM Artists WHERE id = (?);")?;
@@ -1772,7 +2159,6 @@ impl Database {
         }
         Ok(())
     }
-
 
     fn prune_cover_art(&self, tx: &Transaction) -> Result<(), Box<dyn Error>> {
         debug!("prune_cover_art");
@@ -1787,7 +2173,7 @@ impl Database {
 
             let mut stmt = tx.prepare("SELECT EXISTS(SELECT 1 FROM Track_Cover_Art_Junction WHERE cover_art_id = (?) LIMIT 1) OR EXISTS(SELECT 1 FROM Album_Cover_Art_Junction WHERE cover_art_id = (?) LIMIT 1);")?;
             let exists: i32 = stmt.query_row([cover_art_id, cover_art_id], |row| row.get(0))?;
-            
+
             if exists == 0 {
                 let mut stmt = tx.prepare("DELETE FROM Cover_Art WHERE id = (?);")?;
                 stmt.execute(params![cover_art_id])?;
@@ -1809,7 +2195,7 @@ impl Database {
 
             let mut stmt = tx.prepare("SELECT EXISTS(SELECT 1 FROM Artist_Discog_Artist_Image_Junction WHERE image_id = (?) LIMIT 1);")?;
             let exists: i32 = stmt.query_row([image_id], |row| row.get(0))?;
-            
+
             if exists == 0 {
                 let mut stmt = tx.prepare("DELETE FROM Discog_Artist_Image WHERE id = (?);")?;
                 stmt.execute(params![image_id])?;
@@ -1817,7 +2203,6 @@ impl Database {
         }
         Ok(())
     }
-
 
     fn prune_playlists(&self, tx: &Transaction) -> Result<(), Box<dyn Error>> {
         debug!("prune_playlists Playlist_Entries");
@@ -1831,7 +2216,7 @@ impl Database {
             debug!("prune_playlists Playlist_Entry_Track_Junction");
             let mut stmt = tx.prepare("SELECT EXISTS(SELECT 1 FROM Playlist_Entry_Track_Junction WHERE playlist_entry_id = (?) LIMIT 1);")?;
             let exists: i32 = stmt.query_row([playlist_entry_id], |row| row.get(0))?;
-            
+
             if exists == 0 {
                 debug!("prune_playlists delete Playlist Entry");
                 // if the junction does not exist, remove from playlist and then delete entry.
@@ -1855,7 +2240,7 @@ impl Database {
 
             let mut stmt = tx.prepare("SELECT EXISTS(SELECT 1 FROM Playlist_Entry_Playlist_Junction WHERE playlist_id = (?) LIMIT 1);")?;
             let exists: i32 = stmt.query_row([playlist_id], |row| row.get(0))?;
-            
+
             if exists == 0 {
                 let mut stmt = tx.prepare("DELETE FROM Playlists WHERE id = (?);")?;
                 stmt.execute(params![playlist_id])?;
@@ -1864,18 +2249,17 @@ impl Database {
         Ok(())
     }
 
-
-    
     //REMOVE PLAYLIST METHODS
     fn delete_playlist(&self, playlist_id: i64) -> Result<(), Box<dyn Error>> {
         let mut conn = self.imp().conn.borrow_mut();
         let conn = conn.as_mut().ok_or("Connection not established")?;
         let tx = conn.transaction()?;
-        
+
         let statements = |tx: &Transaction| -> Result<(), Box<dyn Error>> {
             debug!("begin removal statements");
 
-            let mut stmt = tx.prepare("DELETE FROM Playlist_Entry_Playlist_Junction WHERE playlist_id = (?);")?;
+            let mut stmt = tx
+                .prepare("DELETE FROM Playlist_Entry_Playlist_Junction WHERE playlist_id = (?);")?;
             stmt.execute(params![playlist_id])?;
             debug!("removed Playlist_Entry_Playlist_Junction");
 
@@ -1883,8 +2267,9 @@ impl Database {
 
             debug!("removing entries: {:?}", entries);
             for entry_id in entries {
-
-                let mut stmt = tx.prepare("DELETE FROM Playlist_Entry_Track_Junction WHERE playlist_entry_id = (?);")?;
+                let mut stmt = tx.prepare(
+                    "DELETE FROM Playlist_Entry_Track_Junction WHERE playlist_entry_id = (?);",
+                )?;
                 stmt.execute(params![entry_id])?;
                 debug!("removed Playlist_Entry_Track_Junction");
 
@@ -1907,7 +2292,6 @@ impl Database {
         Ok(())
     }
 
-
     fn remove_track_from_playlist(&self, playlist_entry_id: i64) -> Result<(), Box<dyn Error>> {
         let mut conn = self.imp().conn.borrow_mut();
         let conn = conn.as_mut().ok_or("Connection not established")?;
@@ -1915,25 +2299,36 @@ impl Database {
         let playlist_id: Option<i64> = self.delete_track_from_playlist(&tx, playlist_entry_id)?;
         tx.commit()?;
         if !playlist_id.is_none() {
-            send!(self.imp().model_sender, ModelAction::PopulatePlaylist(playlist_id.unwrap() as u64));
+            send!(
+                self.imp().model_sender,
+                ModelAction::PopulatePlaylist(playlist_id.unwrap() as u64)
+            );
         }
         Ok(())
-    }   
+    }
 
-    fn delete_track_from_playlist(&self, tx: &Transaction, playlist_entry_id: i64) -> Result<Option<i64>, Box<dyn Error>> {
+    fn delete_track_from_playlist(
+        &self,
+        tx: &Transaction,
+        playlist_entry_id: i64,
+    ) -> Result<Option<i64>, Box<dyn Error>> {
         debug!("SELECT playlist_id FROM Playlist_Entry_Playlist_Junction WHERE playlist_entry_id = ({})", playlist_entry_id);
 
         let mut stmt = tx.prepare("SELECT playlist_id FROM Playlist_Entry_Playlist_Junction WHERE playlist_entry_id = (?)")?;
-        let playlist_id: i64 = match stmt.query_row([playlist_entry_id], |row| row.get(0)).optional()? {
+        let playlist_id: i64 = match stmt
+            .query_row([playlist_entry_id], |row| row.get(0))
+            .optional()?
+        {
             Some(id) => id,
             None => return Ok(None),
         };
 
         debug!("SELECT playlist_position FROM Playlist_Entries WHERE id = (?)");
 
-        let mut stmt = tx.prepare("SELECT playlist_position FROM Playlist_Entries WHERE id = (?)")?;
+        let mut stmt =
+            tx.prepare("SELECT playlist_position FROM Playlist_Entries WHERE id = (?)")?;
         let playlist_position: usize = stmt.query_row([playlist_entry_id], |row| row.get(0))?;
-        
+
         let mut entries = self.query_ordered_vec_of_playlist_entries(&tx, playlist_id)?;
         _ = entries.remove(playlist_position);
         for (pos, entry) in entries.iter().enumerate() {
@@ -1941,11 +2336,14 @@ impl Database {
         }
 
         debug!("begin removal statements");
-        let mut stmt = tx.prepare("DELETE FROM Playlist_Entry_Playlist_Junction WHERE playlist_entry_id = (?);")?;
+        let mut stmt = tx.prepare(
+            "DELETE FROM Playlist_Entry_Playlist_Junction WHERE playlist_entry_id = (?);",
+        )?;
         stmt.execute(params![playlist_entry_id])?;
         debug!("removed Playlist_Entry_Playlist_Junction");
 
-        let mut stmt = tx.prepare("DELETE FROM Playlist_Entry_Track_Junction WHERE playlist_entry_id = (?);")?;
+        let mut stmt =
+            tx.prepare("DELETE FROM Playlist_Entry_Track_Junction WHERE playlist_entry_id = (?);")?;
         stmt.execute(params![playlist_entry_id])?;
         debug!("removed Playlist_Entry_Track_Junction");
 
@@ -1957,8 +2355,7 @@ impl Database {
         Ok(Some(playlist_id))
     }
 
-
-// TABLE SETUP 
+    // TABLE SETUP
 
     fn setup_db_tables(&self) -> Result<(), Box<dyn Error>> {
         let conn = self.imp().conn.borrow();
@@ -1969,23 +2366,35 @@ impl Database {
             .unwrap();
 
         // make directories table
-        connection.execute("CREATE TABLE IF NOT EXISTS
+        connection
+            .execute(
+                "CREATE TABLE IF NOT EXISTS
         Music_Folders
         (
             id  INTEGER PRIMARY KEY,
             uri TEXT NOT NULL
-        );", params![],).unwrap();
+        );",
+                params![],
+            )
+            .unwrap();
 
         // make files table
-        connection.execute("CREATE TABLE IF NOT EXISTS
+        connection
+            .execute(
+                "CREATE TABLE IF NOT EXISTS
         File_URIs
         (
             id  INTEGER PRIMARY KEY,
             uri TEXT NOT NULL,
             last_modified TIMESTAMP
-        );", params![],).unwrap();
+        );",
+                params![],
+            )
+            .unwrap();
 
-        connection.execute("CREATE TABLE IF NOT EXISTS
+        connection
+            .execute(
+                "CREATE TABLE IF NOT EXISTS
         Folder_File_Junction
         (
             id  INTEGER PRIMARY KEY,
@@ -1993,28 +2402,43 @@ impl Database {
             file_id INTEGER NOT NULL,
             FOREIGN KEY (folder_id) REFERENCES Music_Folders(id),
             FOREIGN KEY (file_id) REFERENCES File_URIs(id)
-        );", params![],).unwrap();
+        );",
+                params![],
+            )
+            .unwrap();
 
         // make genre table
-        connection.execute("CREATE TABLE IF NOT EXISTS
+        connection
+            .execute(
+                "CREATE TABLE IF NOT EXISTS
         Genres
         (
             id  INTEGER PRIMARY KEY,
             name TEXT NOT NULL
-        );", params![],).unwrap();
+        );",
+                params![],
+            )
+            .unwrap();
 
         // make artist table
-        connection.execute("CREATE TABLE IF NOT EXISTS
+        connection
+            .execute(
+                "CREATE TABLE IF NOT EXISTS
         Artists
         (
             id  INTEGER PRIMARY KEY,
             name TEXT NOT NULL,
             image_fetched INTEGER NOT NULL
-        );",params![],).unwrap();
+        );",
+                params![],
+            )
+            .unwrap();
 
         // make album table
         // foreign key -> albumartist_parent
-        connection.execute("CREATE TABLE IF NOT EXISTS
+        connection
+            .execute(
+                "CREATE TABLE IF NOT EXISTS
         Albums
         (
             id  INTEGER PRIMARY KEY,
@@ -2022,18 +2446,28 @@ impl Database {
             artist TEXT NOT NULL,
             date TEXT NOT NULL,
             genre TEXT NOT NULL
-        );", params![],).unwrap();
+        );",
+                params![],
+            )
+            .unwrap();
 
-        connection.execute("CREATE TABLE IF NOT EXISTS
+        connection
+            .execute(
+                "CREATE TABLE IF NOT EXISTS
         Cover_Art
         (
             id  INTEGER PRIMARY KEY,
             data BLOB NOT NULL,
             thing INTEGER
-        );",params![],).unwrap();
+        );",
+                params![],
+            )
+            .unwrap();
 
         // make tracks table
-        connection.execute("CREATE TABLE IF NOT EXISTS
+        connection
+            .execute(
+                "CREATE TABLE IF NOT EXISTS
         Tracks
         (
             id  INTEGER PRIMARY KEY,
@@ -2047,10 +2481,15 @@ impl Database {
             album_artist TEXT NOT NULL,
             file_uri_id INTEGER NOT NULL,
             FOREIGN KEY (file_uri_id) REFERENCES File_URIs(id)
-        );", params![]).unwrap();
+        );",
+                params![],
+            )
+            .unwrap();
 
         // make plays table
-        connection.execute("CREATE TABLE IF NOT EXISTS
+        connection
+            .execute(
+                "CREATE TABLE IF NOT EXISTS
         Plays
         (
             id  INTEGER PRIMARY KEY,
@@ -2061,10 +2500,15 @@ impl Database {
             FOREIGN KEY (track_id) REFERENCES tracks(id),
             FOREIGN KEY (album_id) REFERENCES albums(id),
             FOREIGN KEY (album_artist_id) REFERENCES artists(id)
-        );",  params![],).unwrap();
+        );",
+                params![],
+            )
+            .unwrap();
 
         // make playlists table
-        connection.execute("CREATE TABLE IF NOT EXISTS
+        connection
+            .execute(
+                "CREATE TABLE IF NOT EXISTS
         Playlists
         (
             id  INTEGER PRIMARY KEY,
@@ -2072,17 +2516,27 @@ impl Database {
             description TEXT NOT NULL,
             creation_time TIMESTAMP,
             modify_time TIMESTAMP
-        );", params![],).unwrap();
+        );",
+                params![],
+            )
+            .unwrap();
 
         // make playlist entries table
-        connection.execute("CREATE TABLE IF NOT EXISTS
+        connection
+            .execute(
+                "CREATE TABLE IF NOT EXISTS
         Playlist_Entries
         (
             id  INTEGER PRIMARY KEY,
             playlist_position INTEGER NOT NULL
-        );", params![],).unwrap();
+        );",
+                params![],
+            )
+            .unwrap();
 
-        connection.execute("CREATE TABLE IF NOT EXISTS
+        connection
+            .execute(
+                "CREATE TABLE IF NOT EXISTS
         Playlist_Entry_Track_Junction
         (
             id  INTEGER PRIMARY KEY,
@@ -2090,9 +2544,14 @@ impl Database {
             track_id INTEGER NOT NULL,
             FOREIGN KEY (playlist_entry_id) REFERENCES Playlist_Entries(id),
             FOREIGN KEY (track_id) REFERENCES Tracks(id)
-        );", params![]).unwrap();
+        );",
+                params![],
+            )
+            .unwrap();
 
-        connection.execute("CREATE TABLE IF NOT EXISTS
+        connection
+            .execute(
+                "CREATE TABLE IF NOT EXISTS
         Playlist_Entry_Playlist_Junction
         (
             id  INTEGER PRIMARY KEY,
@@ -2100,8 +2559,10 @@ impl Database {
             playlist_id INTEGER NOT NULL,
             FOREIGN KEY (playlist_entry_id) REFERENCES Playlist_Entries(id),
             FOREIGN KEY (playlist_id) REFERENCES Playlists(id)
-        );", params![]).unwrap();
-
+        );",
+                params![],
+            )
+            .unwrap();
 
         // let mut stmt = connection.prepare("SELECT name FROM sqlite_master WHERE type='table'")?;
         // let mut rows = stmt.query(rusqlite::params![])?;
@@ -2111,7 +2572,9 @@ impl Database {
         //     debug!("Table name: {}", table_name);
         // }
 
-        connection.execute("CREATE TABLE IF NOT EXISTS
+        connection
+            .execute(
+                "CREATE TABLE IF NOT EXISTS
         Track_Folder_Junction
         (
             id  INTEGER PRIMARY KEY,
@@ -2119,9 +2582,14 @@ impl Database {
             folder_id INTEGER NOT NULL,
             FOREIGN KEY (track_id) REFERENCES Tracks(id),
             FOREIGN KEY (folder_id) REFERENCES Music_Folders(id)
-        );", params![]).unwrap();
+        );",
+                params![],
+            )
+            .unwrap();
 
-        connection.execute("CREATE TABLE IF NOT EXISTS
+        connection
+            .execute(
+                "CREATE TABLE IF NOT EXISTS
         Track_Album_Junction
         (
             id  INTEGER PRIMARY KEY,
@@ -2129,9 +2597,14 @@ impl Database {
             album_id INTEGER NOT NULL,
             FOREIGN KEY (track_id) REFERENCES Tracks(id),
             FOREIGN KEY (album_id) REFERENCES Albums(id)
-        );", params![]).unwrap();
+        );",
+                params![],
+            )
+            .unwrap();
 
-        connection.execute("CREATE TABLE IF NOT EXISTS
+        connection
+            .execute(
+                "CREATE TABLE IF NOT EXISTS
         Track_Artist_Junction
         (
             id  INTEGER PRIMARY KEY,
@@ -2139,9 +2612,14 @@ impl Database {
             artist_id INTEGER NOT NULL,
             FOREIGN KEY (track_id) REFERENCES Tracks(id),
             FOREIGN KEY (artist_id) REFERENCES Artists(id)
-        );", params![]).unwrap();
+        );",
+                params![],
+            )
+            .unwrap();
 
-        connection.execute("CREATE TABLE IF NOT EXISTS
+        connection
+            .execute(
+                "CREATE TABLE IF NOT EXISTS
         Track_Cover_Art_Junction
         (
             id  INTEGER PRIMARY KEY,
@@ -2149,9 +2627,14 @@ impl Database {
             cover_art_id INTEGER NOT NULL,
             FOREIGN KEY (track_id) REFERENCES Tracks(id),
             FOREIGN KEY (cover_art_id) REFERENCES Cover_Art(id)
-        );", params![]).unwrap();
+        );",
+                params![],
+            )
+            .unwrap();
 
-        connection.execute("CREATE TABLE IF NOT EXISTS
+        connection
+            .execute(
+                "CREATE TABLE IF NOT EXISTS
         Album_Cover_Art_Junction
         (
             id  INTEGER PRIMARY KEY,
@@ -2159,9 +2642,14 @@ impl Database {
             cover_art_id INTEGER NOT NULL,
             FOREIGN KEY (album_id) REFERENCES Albums(id),
             FOREIGN KEY (cover_art_id) REFERENCES Cover_Art(id)
-        );", params![]).unwrap();
+        );",
+                params![],
+            )
+            .unwrap();
 
-        connection.execute("CREATE TABLE IF NOT EXISTS
+        connection
+            .execute(
+                "CREATE TABLE IF NOT EXISTS
         Album_Artist_Junction
         (
             id  INTEGER PRIMARY KEY,
@@ -2169,9 +2657,14 @@ impl Database {
             artist_id INTEGER NOT NULL,
             FOREIGN KEY (album_id) REFERENCES Albums(id),
             FOREIGN KEY (artist_id) REFERENCES Artists(id)
-        );", params![]).unwrap();
+        );",
+                params![],
+            )
+            .unwrap();
 
-        connection.execute("CREATE TABLE IF NOT EXISTS
+        connection
+            .execute(
+                "CREATE TABLE IF NOT EXISTS
         Album_Genre_Junction
         (
             id  INTEGER PRIMARY KEY,
@@ -2179,18 +2672,28 @@ impl Database {
             genre_id INTEGER NOT NULL,
             FOREIGN KEY (album_id) REFERENCES Albums(id),
             FOREIGN KEY (genre_id) REFERENCES Genres(id)
-        );", params![]).unwrap();
+        );",
+                params![],
+            )
+            .unwrap();
 
-        connection.execute("CREATE TABLE IF NOT EXISTS
+        connection
+            .execute(
+                "CREATE TABLE IF NOT EXISTS
         Discog_Artist_Image
         (
             id  INTEGER PRIMARY KEY,
             url TEXT NOT NULL,
             data BLOB NOT NULL,
             thing INTEGER
-        );",params![],).unwrap();
+        );",
+                params![],
+            )
+            .unwrap();
 
-        connection.execute("CREATE TABLE IF NOT EXISTS
+        connection
+            .execute(
+                "CREATE TABLE IF NOT EXISTS
         Artist_Discog_Artist_Image_Junction
         (
             id  INTEGER PRIMARY KEY,
@@ -2198,7 +2701,10 @@ impl Database {
             image_id INTEGER NOT NULL,
             FOREIGN KEY (artist_id) REFERENCES Artists(id),
             FOREIGN KEY (image_id) REFERENCES Discog_Artist_Image(id)
-        );", params![]).unwrap();
+        );",
+                params![],
+            )
+            .unwrap();
 
         Ok(())
     }
@@ -2210,10 +2716,12 @@ impl Database {
     fn importer(&self) -> &Importer {
         &self.imp().importer
     }
-
 }
 
-fn fetch_artist_images_bulk(artists: Vec<(i64, String)>, sender: Sender<DatabaseAction>) -> Result<(), Box<dyn Error>> {
+fn fetch_artist_images_bulk(
+    artists: Vec<(i64, String)>,
+    sender: Sender<DatabaseAction>,
+) -> Result<(), Box<dyn Error>> {
     let dur = Duration::from_millis(2525);
     //let n_artists = artists.len() as u32;
 
@@ -2227,7 +2735,7 @@ fn fetch_artist_images_bulk(artists: Vec<(i64, String)>, sender: Sender<Database
             payload.push((id, None));
             //send!(sender, DatabaseAction::AddArtistImage((id, None)));
         }
-        
+
         std::thread::sleep(dur);
     }
 

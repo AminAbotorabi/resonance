@@ -7,24 +7,20 @@
 use adw::prelude::*;
 use adw::subclass::prelude::*;
 
-use gtk::{gio, gdk, glib, glib::clone, CompositeTemplate};
+use gtk::{gdk, gio, glib, glib::clone, CompositeTemplate};
 
-use std::{cell::RefCell, cell::Cell, rc::Rc};
 use log::debug;
+use std::{cell::Cell, cell::RefCell, rc::Rc};
 
-use crate::model::track::Track;
-use crate::views::{
-    scale::Scale,
-    window::WindowPage,
-    volume_widget::VolumeWidget,
-};
-use crate::player::queue::RepeatMode;
-use crate::util::{player, model, seconds_to_string, settings_manager};
 use crate::i18n::i18n;
+use crate::model::track::Track;
+use crate::player::queue::RepeatMode;
+use crate::util::{model, player, seconds_to_string, settings_manager};
+use crate::views::{scale::Scale, volume_widget::VolumeWidget, window::WindowPage};
 
 mod imp {
     use super::*;
-    
+
     #[derive(Debug, Default, CompositeTemplate)]
     #[template(resource = "/io/github/nate_xyz/Resonance/queue_page.ui")]
     pub struct QueuePagePriv {
@@ -42,7 +38,7 @@ mod imp {
 
         #[template_child(id = "previous_button")]
         pub previous_button: TemplateChild<gtk::Button>,
- 
+
         #[template_child(id = "play_button")]
         pub play_button: TemplateChild<gtk::Button>,
 
@@ -84,11 +80,10 @@ mod imp {
 
         #[template_child(id = "popover")]
         pub popover: TemplateChild<gtk::PopoverMenu>,
-        
+
         pub picture: RefCell<Option<gtk::Picture>>,
         pub track: RefCell<Option<Rc<Track>>>,
         pub window_page: Cell<WindowPage>,
-
     }
 
     #[glib::object_subclass]
@@ -104,7 +99,6 @@ mod imp {
         fn instance_init(obj: &glib::subclass::InitializingObject<Self>) {
             obj.init_template();
         }
-
     }
 
     impl ObjectImpl for QueuePagePriv {
@@ -123,7 +117,6 @@ glib::wrapper! {
     pub struct QueuePage(ObjectSubclass<imp::QueuePagePriv>)
     @extends gtk::Box, gtk::Widget;
 }
-
 
 impl QueuePage {
     pub fn new() -> QueuePage {
@@ -165,16 +158,16 @@ impl QueuePage {
                     imp.popover.set_offset(x - width, y - height);
                     imp.popover.popup();
                 }
-            })
+            }),
         );
-        self.add_controller(ctrl);   
+        self.add_controller(ctrl);
     }
 
     // Bind the PlayerState to the UI
     fn bind_state(&self) {
         let player = player();
         // Update current track
-        
+
         player.state().connect_notify_local(
             Some("song"),
             clone!(@weak self as this => move |_, _| {
@@ -222,22 +215,22 @@ impl QueuePage {
                 imp.shuffle_button.remove_css_class("suggested-action");
                 imp.loop_button.remove_css_class("suggested-action");
                 imp.repeat_button.remove_css_class("suggested-action");
-            },
+            }
             RepeatMode::Loop => {
                 imp.shuffle_button.remove_css_class("suggested-action");
                 imp.loop_button.add_css_class("suggested-action");
                 imp.repeat_button.remove_css_class("suggested-action");
-            },
+            }
             RepeatMode::LoopSong => {
                 imp.shuffle_button.remove_css_class("suggested-action");
                 imp.loop_button.remove_css_class("suggested-action");
                 imp.repeat_button.add_css_class("suggested-action");
-            },
+            }
             RepeatMode::Shuffle => {
                 imp.shuffle_button.add_css_class("suggested-action");
                 imp.loop_button.remove_css_class("suggested-action");
                 imp.repeat_button.remove_css_class("suggested-action");
-            },
+            }
         }
     }
 
@@ -245,11 +238,13 @@ impl QueuePage {
         let imp = self.imp();
         if player().state().playing() {
             debug!("playing, setting button to pause");
-            imp.play_pause_image.set_icon_name(Some("media-playback-pause-symbolic"));
+            imp.play_pause_image
+                .set_icon_name(Some("media-playback-pause-symbolic"));
             imp.play_button.set_tooltip_text(Some(&i18n("Pause")));
         } else {
             debug!("not playing, setting button to play");
-            imp.play_pause_image.set_icon_name(Some("media-playback-start-symbolic"));
+            imp.play_pause_image
+                .set_icon_name(Some("media-playback-start-symbolic"));
             imp.play_button.set_tooltip_text(Some(&i18n("Play")));
         }
     }
@@ -259,39 +254,38 @@ impl QueuePage {
         imp.play_button.connect_clicked(
             clone!(@strong self as this => @default-panic, move |_button| {
                 player().toggle_play_pause();
-            })
+            }),
         );
 
         imp.previous_button.connect_clicked(
             clone!(@strong self as this => @default-panic, move |_button| {
                 player().prev();
-            })
+            }),
         );
 
         imp.next_button.connect_clicked(
             clone!(@strong self as this => @default-panic, move |_button| {
                 player().next();
-            })
+            }),
         );
 
         imp.loop_button.connect_clicked(
             clone!(@strong self as this => @default-panic, move |_button| {
                 player().queue().on_repeat_change(RepeatMode::Loop);
-            })
+            }),
         );
 
         imp.repeat_button.connect_clicked(
             clone!(@strong self as this => @default-panic, move |_button| {
                 player().queue().on_repeat_change(RepeatMode::LoopSong);
-            })
+            }),
         );
 
         imp.shuffle_button.connect_clicked(
             clone!(@strong self as this => @default-panic, move |_button| {
                 player().queue().on_repeat_change(RepeatMode::Shuffle);
-            })
+            }),
         );
-
     }
 
     fn update_current_track(&self) {
@@ -308,13 +302,14 @@ impl QueuePage {
         if let Some(track) = imp.track.borrow().as_ref() {
             imp.track_info_box.show();
             imp.scale_clamp.show();
-            
+
             imp.spent_time_label.set_label("0:00");
             imp.track_name_label.set_label(&track.title());
             imp.album_name_label.set_label(&track.album());
             imp.artist_name_label.set_label(&track.artist());
-            imp.duration_label.set_label(&seconds_to_string(track.duration()));
-            
+            imp.duration_label
+                .set_label(&seconds_to_string(track.duration()));
+
             self.sync_prev_next();
             self.load_art(track.cover_art_option());
         } else {
@@ -347,8 +342,9 @@ impl QueuePage {
         let pixbuf = cover_art.pixbuf()?;
 
         let picture = if pixbuf.height() < 668 {
-            let scaled_up = pixbuf.scale_simple(668, 668, gtk::gdk_pixbuf::InterpType::Bilinear)
-            .unwrap();
+            let scaled_up = pixbuf
+                .scale_simple(668, 668, gtk::gdk_pixbuf::InterpType::Bilinear)
+                .unwrap();
             gtk::Picture::for_pixbuf(&scaled_up)
         } else {
             gtk::Picture::for_pixbuf(&pixbuf)
@@ -377,7 +373,9 @@ impl QueuePage {
 
     fn update_position(&self) {
         let position = player().state().position() as f64;
-        self.imp().spent_time_label.set_label(&seconds_to_string(position));
+        self.imp()
+            .spent_time_label
+            .set_label(&seconds_to_string(position));
     }
 
     pub fn show_queue_button(&self) -> &gtk::Button {
@@ -398,9 +396,9 @@ impl QueuePage {
 
     fn create_menu(&self) {
         let imp = self.imp();
-    
+
         let menu = gio::Menu::new();
-    
+
         let menu_item = gio::MenuItem::new(Some(&i18n("Toggle Play Pause")), None);
         menu_item.set_action_and_target_value(Some("win.toggle-play-pause"), None);
         menu.append_item(&menu_item);
@@ -419,6 +417,4 @@ impl QueuePage {
 
         imp.popover.set_menu_model(Some(&menu));
     }
-
 }
-    

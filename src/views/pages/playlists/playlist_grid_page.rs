@@ -7,29 +7,29 @@
 use adw::prelude::*;
 use adw::subclass::prelude::*;
 
-use gtk::{glib, glib::clone, CompositeTemplate};
 use gtk::{gio, gio::ListStore};
+use gtk::{glib, glib::clone, CompositeTemplate};
 
-use std::{cell::{RefCell, Cell}, rc::Rc};
-use std::time::Duration;
 use log::debug;
+use std::time::Duration;
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
 
-use crate::util::model;
 use crate::model::playlist::Playlist;
 use crate::search::{FuzzyFilter, SearchSortObject};
 use crate::sort::{FuzzySorter, SortMethod};
+use crate::util::model;
 
 use super::playlist_grid_child::PlaylistGridChild;
-
 
 mod imp {
     use super::*;
     use glib::subclass::Signal;
-    use glib::{
-        Value, ParamSpec, ParamSpecBoolean, ParamSpecEnum
-    };
+    use glib::{ParamSpec, ParamSpecBoolean, ParamSpecEnum, Value};
     use once_cell::sync::Lazy;
-    
+
     #[derive(Debug, Default, CompositeTemplate)]
     #[template(resource = "/io/github/nate_xyz/Resonance/playlist_grid_page.ui")]
     pub struct PlaylistGridPagePriv {
@@ -81,20 +81,23 @@ mod imp {
         }
 
         fn properties() -> &'static [ParamSpec] {
-            static PROPERTIES: Lazy<Vec<ParamSpec>> =
-                Lazy::new(|| vec![
-                    ParamSpecBoolean::builder("hidden").default_value(false).build(),
-                    ParamSpecEnum::builder::<SortMethod>("sort-method").build()
-                    ]);
+            static PROPERTIES: Lazy<Vec<ParamSpec>> = Lazy::new(|| {
+                vec![
+                    ParamSpecBoolean::builder("hidden")
+                        .default_value(false)
+                        .build(),
+                    ParamSpecEnum::builder::<SortMethod>("sort-method").build(),
+                ]
+            });
             PROPERTIES.as_ref()
         }
-    
+
         fn set_property(&self, _id: usize, value: &Value, pspec: &ParamSpec) {
             match pspec.name() {
                 "hidden" => {
                     let hidden_ = value.get().expect("The value needs to be of type `bool`.");
                     self.hidden.replace(hidden_);
-                },
+                }
                 "sort-method" => {
                     let sort_method = value.get().expect("The value needs to be of type `enum`.");
                     self.sort_method.replace(sort_method);
@@ -102,7 +105,7 @@ mod imp {
                 _ => unimplemented!(),
             }
         }
-    
+
         fn property(&self, _id: usize, pspec: &ParamSpec) -> Value {
             match pspec.name() {
                 "hidden" => self.hidden.get().to_value(),
@@ -113,16 +116,13 @@ mod imp {
 
         fn signals() -> &'static [Signal] {
             static SIGNALS: Lazy<Vec<Signal>> = Lazy::new(|| {
-                vec![
-                    Signal::builder("playlist-selected")
-                        .param_types([<i64>::static_type()])
-                        .build(),
-                ]
+                vec![Signal::builder("playlist-selected")
+                    .param_types([<i64>::static_type()])
+                    .build()]
             });
 
             SIGNALS.as_ref()
         }
-
     }
 
     impl WidgetImpl for PlaylistGridPagePriv {}
@@ -135,7 +135,6 @@ glib::wrapper! {
     @extends gtk::Box, gtk::Widget;
 }
 
-
 impl PlaylistGridPage {
     pub fn new() -> PlaylistGridPage {
         let playlist_grid: PlaylistGridPage = glib::Object::builder::<PlaylistGridPage>().build();
@@ -144,16 +143,18 @@ impl PlaylistGridPage {
 
     pub fn initialize(&self) {
         let imp = self.imp();
-        
-        model().connect_local("refresh-playlists", false, 
+
+        model().connect_local(
+            "refresh-playlists",
+            false,
             clone!(@weak self as this => @default-return None, move |_args| {
                 this.update_view();
                 None
-            })
+            }),
         );
 
         let list_store = gio::ListStore::new(Playlist::static_type());
-        
+
         let filter = FuzzyFilter::new(SearchSortObject::Playlist);
         let filter_model = gtk::FilterListModel::new(None::<gio::ListStore>, None::<FuzzyFilter>);
         filter_model.set_model(Some(&list_store));
@@ -165,7 +166,7 @@ impl PlaylistGridPage {
         sorter_model.set_sorter(Some(&sorter));
 
         let selection = gtk::NoSelection::new(Some(sorter_model));
-        
+
         imp.flow_box.bind_model(Some(&selection), 
         clone!(@strong self as this => @default-panic, move |obj| {
             let playlist = obj.clone().downcast::<Playlist>().expect("Album is of wrong type");
@@ -193,7 +194,6 @@ impl PlaylistGridPage {
         );
 
         imp.list_store.replace(Some(Rc::new(list_store)));
-
 
         // imp.search_entry.bind_property("text", &filter, "search")
         //     .flags(glib::BindingFlags::SYNC_CREATE)
@@ -228,8 +228,9 @@ impl PlaylistGridPage {
                 );
             }),  
         );
-        
-        self.connect_notify_local(Some("sort-method"),
+
+        self.connect_notify_local(
+            Some("sort-method"),
             clone!(@strong self as this => move |_, _| {
                 let imp = this.imp();
                 let sort_method = imp.sort_method.get();
@@ -282,7 +283,8 @@ impl PlaylistGridPage {
 
     pub fn on_toggle_search_button(&self) {
         let imp = self.imp();
-        imp.search_bar.set_search_mode(!imp.search_bar.is_search_mode());
+        imp.search_bar
+            .set_search_mode(!imp.search_bar.is_search_mode());
         imp.search_bar.grab_focus();
     }
 
@@ -294,4 +296,3 @@ impl PlaylistGridPage {
         self.imp().list_store.borrow().clone().unwrap().clone()
     }
 }
-    

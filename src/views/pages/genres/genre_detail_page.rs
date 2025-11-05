@@ -9,26 +9,24 @@ use adw::subclass::prelude::*;
 
 use gtk::{gio, glib, glib::clone, CompositeTemplate};
 
-use std::{cell::RefCell, cell::Cell, rc::Rc};
-use std::time::Duration;
 use html_escape;
 use log::debug;
+use std::time::Duration;
+use std::{cell::Cell, cell::RefCell, rc::Rc};
 
-use crate::util::{model, player, settings_manager};
-use crate::model::genre::Genre;
 use crate::model::album::Album;
-use crate::views::album_card::AlbumCard;
+use crate::model::genre::Genre;
 use crate::search::{FuzzyFilter, SearchSortObject};
 use crate::sort::{FuzzySorter, SortMethod};
+use crate::util::{model, player, settings_manager};
+use crate::views::album_card::AlbumCard;
 
 mod imp {
     use super::*;
     use glib::subclass::Signal;
-    use glib::{
-        Value, ParamSpec, ParamSpecEnum
-    };
+    use glib::{ParamSpec, ParamSpecEnum, Value};
     use once_cell::sync::Lazy;
-    
+
     #[derive(Debug, Default, CompositeTemplate)]
     #[template(resource = "/io/github/nate_xyz/Resonance/genre_detail_page.ui")]
     pub struct GenreDetailPagePriv {
@@ -58,10 +56,10 @@ mod imp {
 
         #[template_child(id = "grid_view")]
         pub grid_view: TemplateChild<gtk::GridView>,
-        
+
         #[template_child(id = "sort-menu")]
         pub sort_menu: TemplateChild<gio::Menu>,
-        
+
         pub genre: RefCell<Option<Rc<Genre>>>,
         pub albums: RefCell<Option<Vec<Rc<Album>>>>,
         pub cards: RefCell<Option<Vec<Rc<AlbumCard>>>>,
@@ -94,23 +92,20 @@ mod imp {
 
         fn properties() -> &'static [ParamSpec] {
             static PROPERTIES: Lazy<Vec<ParamSpec>> =
-                Lazy::new(|| vec![
-                    ParamSpecEnum::builder::<SortMethod>("sort-method").build()
-                    ]
-                );
+                Lazy::new(|| vec![ParamSpecEnum::builder::<SortMethod>("sort-method").build()]);
             PROPERTIES.as_ref()
         }
-    
+
         fn set_property(&self, _id: usize, value: &Value, pspec: &ParamSpec) {
             match pspec.name() {
                 "sort-method" => {
                     let sort_method = value.get().expect("The value needs to be of type `enum`.");
                     self.sort_method.replace(sort_method);
-                },
+                }
                 _ => unimplemented!(),
             }
         }
-    
+
         fn property(&self, _id: usize, pspec: &ParamSpec) -> Value {
             match pspec.name() {
                 "sort-method" => self.sort_method.get().to_value(),
@@ -141,7 +136,6 @@ glib::wrapper! {
     @extends gtk::Box, gtk::Widget;
 }
 
-
 impl GenreDetailPage {
     pub fn new() -> GenreDetailPage {
         let genre_detail: GenreDetailPage = glib::Object::builder::<GenreDetailPage>().build();
@@ -153,20 +147,20 @@ impl GenreDetailPage {
 
         let settings = settings_manager();
 
-        settings.bind("full-page-back-button", &*imp.back_button, "visible")
+        settings
+            .bind("full-page-back-button", &*imp.back_button, "visible")
             .flags(gio::SettingsBindFlags::GET)
             .build();
-        
+
         imp.grid_view.remove_css_class("view");
 
-        imp.back_button.connect_clicked(
-            clone!(@strong self as this => move |_button| {
+        imp.back_button
+            .connect_clicked(clone!(@strong self as this => move |_button| {
                 this.emit_by_name::<()>("back", &[]);
-            })
-        );
+            }));
 
-        imp.play_button.connect_clicked(
-            clone!(@strong self as this => move |_button| {
+        imp.play_button
+            .connect_clicked(clone!(@strong self as this => move |_button| {
                 let albums = this.albums();
                 let mut tracks = Vec::new();
                 for album in albums {
@@ -174,30 +168,26 @@ impl GenreDetailPage {
                     tracks.append(&mut album_tracks);
                 }
                 player().clear_play_album(tracks.clone(), Some(this.genre().name()));
-            })
-        );
+            }));
 
-        imp.add_button.connect_clicked(
-            clone!(@strong self as this => move |_button| {
+        imp.add_button
+            .connect_clicked(clone!(@strong self as this => move |_button| {
                 let albums = this.albums();
                 let mut tracks = Vec::new();
                 for album in albums {
                     let mut album_tracks = album.tracks();
                     tracks.append(&mut album_tracks);
                 }
-                player().add_album(tracks.clone());                
-            })
-        );
+                player().add_album(tracks.clone());
+            }));
 
         let list_item_factory = gtk::SignalListItemFactory::new();
-        list_item_factory.connect_setup(
-            clone!(@strong self as this => move |_, list_item| {
-                let list_item = list_item.downcast_ref::<gtk::ListItem>().unwrap();
-                list_item.set_activatable(false);
-                let album_card = AlbumCard::new();
-                list_item.set_child(Some(&album_card));
-            })
-        );
+        list_item_factory.connect_setup(clone!(@strong self as this => move |_, list_item| {
+            let list_item = list_item.downcast_ref::<gtk::ListItem>().unwrap();
+            list_item.set_activatable(false);
+            let album_card = AlbumCard::new();
+            list_item.set_child(Some(&album_card));
+        }));
 
         list_item_factory.connect_bind(
             clone!(@strong self as this => move |_, list_item| {
@@ -226,15 +216,16 @@ impl GenreDetailPage {
             }),
         );
 
-        self.connect_notify_local(Some("sort-method"),
-        clone!(@strong self as this => move |_, _| {
-            let imp = this.imp();
-            let sort_method = imp.sort_method.get();
-            if let Some(sorter) = imp.sorter.borrow().as_ref() {
-                sorter.set_method(sort_method);
-            }
-        }),
-    );
+        self.connect_notify_local(
+            Some("sort-method"),
+            clone!(@strong self as this => move |_, _| {
+                let imp = this.imp();
+                let sort_method = imp.sort_method.get();
+                if let Some(sorter) = imp.sorter.borrow().as_ref() {
+                    sorter.set_method(sort_method);
+                }
+            }),
+        );
     }
 
     pub fn update_genre(&self, genre_id: i64) {
@@ -303,7 +294,7 @@ impl GenreDetailPage {
                 );
             }),  
         );
-        
+
         imp.filter.replace(Some(filter));
         imp.sorter.replace(Some(sorter));
     }
@@ -311,13 +302,15 @@ impl GenreDetailPage {
     pub fn update_view(&self) {
         let imp = self.imp();
         if let Some(genre) = imp.genre.borrow().as_ref() {
-            imp.name_label.set_label(&html_escape::encode_text_minimal(&genre.name()).to_string());
+            imp.name_label
+                .set_label(&html_escape::encode_text_minimal(&genre.name()).to_string());
         }
     }
 
     pub fn on_toggle_search_button(&self) {
         let imp = self.imp();
-        imp.search_bar.set_search_mode(!imp.search_bar.is_search_mode());
+        imp.search_bar
+            .set_search_mode(!imp.search_bar.is_search_mode());
         if !imp.search_bar.is_search_mode() {
             imp.search_bar.grab_focus();
         }
@@ -334,6 +327,4 @@ impl GenreDetailPage {
     pub fn albums(&self) -> Vec<Rc<Album>> {
         self.imp().albums.borrow().as_ref().unwrap().clone()
     }
-
 }
-    

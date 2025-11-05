@@ -7,15 +7,15 @@
 mod app;
 mod config;
 mod database;
-mod util;
+mod i18n;
+mod importer;
 mod model;
 mod player;
-mod views;
-mod i18n;
-mod toasts;
-mod importer;
 mod search;
 mod sort;
+mod toasts;
+mod util;
+mod views;
 mod web;
 
 use self::app::App;
@@ -25,10 +25,10 @@ use config::{GETTEXT_PACKAGE, LOCALEDIR, PKGDATADIR};
 use gettextrs::{bind_textdomain_codeset, bindtextdomain, textdomain};
 use gtk::{gio, glib, prelude::*};
 
-use std::{env, process};
 use log::{debug, error, LevelFilter};
+use std::{env, process};
 
-fn main() -> glib::ExitCode  {
+fn main() -> glib::ExitCode {
     pretty_env_logger::formatted_builder()
         .filter(None, log::LevelFilter::Debug)
         .filter_module("scraper", LevelFilter::Off)
@@ -76,7 +76,10 @@ fn main() -> glib::ExitCode  {
     // Create a new GtkApplication. The application manages our main loop,
     // application windows, integration with the window manager/compositor, and
     // desktop features such as file opening and single-instance applications.
-    let app = App::new("io.github.nate_xyz.Resonance", &gio::ApplicationFlags::empty());
+    let app = App::new(
+        "io.github.nate_xyz.Resonance",
+        &gio::ApplicationFlags::empty(),
+    );
 
     // Run the application. This function will block until the application
     // exits. Upon return, we have our exit code to return to the shell. (This

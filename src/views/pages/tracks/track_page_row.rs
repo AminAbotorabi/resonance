@@ -8,23 +8,20 @@ use adw::prelude::*;
 use adw::subclass::prelude::*;
 use gtk::{glib, glib::clone, CompositeTemplate};
 
-use std::{cell::RefCell, cell::Cell, rc::Rc};
 use log::error;
+use std::{cell::Cell, cell::RefCell, rc::Rc};
 
 use crate::model::track::Track;
-use crate::views::{
-    art::rounded_album_art::RoundedAlbumArt,
-    art::icon_with_background::IconWithBackground,
-};
 use crate::search::SearchMethod;
 use crate::sort::SortMethod;
-use crate::util::{player, model, seconds_to_string};
+use crate::util::{model, player, seconds_to_string};
+use crate::views::{
+    art::icon_with_background::IconWithBackground, art::rounded_album_art::RoundedAlbumArt,
+};
 
 mod imp {
     use super::*;
-    use glib::{
-        Value, ParamSpec, ParamSpecEnum, ParamSpecBoolean,
-    };
+    use glib::{ParamSpec, ParamSpecBoolean, ParamSpecEnum, Value};
     use once_cell::sync::Lazy;
 
     #[derive(Debug, Default, CompositeTemplate)]
@@ -95,30 +92,33 @@ mod imp {
         }
 
         fn properties() -> &'static [ParamSpec] {
-            static PROPERTIES: Lazy<Vec<ParamSpec>> =
-                Lazy::new(|| vec![
+            static PROPERTIES: Lazy<Vec<ParamSpec>> = Lazy::new(|| {
+                vec![
                     ParamSpecEnum::builder::<SortMethod>("sort-method").build(),
-                    ParamSpecBoolean::builder("display-labels-default").default_value(false).build(),
-                    ]
-                );
+                    ParamSpecBoolean::builder("display-labels-default")
+                        .default_value(false)
+                        .build(),
+                ]
+            });
             PROPERTIES.as_ref()
         }
-    
+
         fn set_property(&self, _id: usize, value: &Value, pspec: &ParamSpec) {
             match pspec.name() {
                 "display-labels-default" => {
-                    let display_labels_default = value.get().expect("The value needs to be of type `bool`.");
+                    let display_labels_default =
+                        value.get().expect("The value needs to be of type `bool`.");
                     self.display_labels_default.replace(display_labels_default);
-                },
+                }
                 "sort-method" => {
                     let sort_method = value.get().expect("The value needs to be of type `enum`.");
                     self.sort_method.replace(sort_method);
                     self.obj().update_sort_ui();
-                },
+                }
                 _ => unimplemented!(),
             }
         }
-    
+
         fn property(&self, _id: usize, pspec: &ParamSpec) -> Value {
             match pspec.name() {
                 "display-labels-default" => self.display_labels_default.get().to_value(),
@@ -156,64 +156,64 @@ impl TrackPageRow {
         self.bind_property("display-labels-default", &*imp.date_label, "visible")
             .flags(glib::BindingFlags::SYNC_CREATE)
             .build();
-            
-        imp.overlay_box.prepend(&IconWithBackground::new("media-playback-start-symbolic", 60, false));
+
+        imp.overlay_box.prepend(&IconWithBackground::new(
+            "media-playback-start-symbolic",
+            60,
+            false,
+        ));
 
         imp.add_button.connect_clicked(
             clone!(@strong self as this => @default-panic, move |_button| {
                 let track = this.track();
                 player().add_track(track);
-            })
+            }),
         );
 
         let ctrl = gtk::EventControllerMotion::new();
-        ctrl.connect_enter(
-            clone!(@strong self as this => move |_controller, _x, _y| {
-                let imp = this.imp();
+        ctrl.connect_enter(clone!(@strong self as this => move |_controller, _x, _y| {
+            let imp = this.imp();
 
-                imp.duration_label.hide();
-                imp.date_label.hide();
-                imp.genre_label.hide();
-                
-                imp.add_button.show();
-                
-                match imp.art.borrow().as_ref() {
-                    Some(_art) => {
-                        imp.overlay_box.show();
-                    }
-                    None => {
-                        imp.play_icon_no_art.show();
-                    },
+            imp.duration_label.hide();
+            imp.date_label.hide();
+            imp.genre_label.hide();
+
+            imp.add_button.show();
+
+            match imp.art.borrow().as_ref() {
+                Some(_art) => {
+                    imp.overlay_box.show();
                 }
-            })
-        );
-        ctrl.connect_leave(
-            clone!(@strong self as this => move |_controller| {
-                let imp = this.imp();
+                None => {
+                    imp.play_icon_no_art.show();
+                },
+            }
+        }));
+        ctrl.connect_leave(clone!(@strong self as this => move |_controller| {
+            let imp = this.imp();
 
-                let method = imp.search_method.get();
+            let method = imp.search_method.get();
 
-                if method == SearchMethod::Genre || imp.display_labels_default.get() {
-                    imp.genre_label.show();
+            if method == SearchMethod::Genre || imp.display_labels_default.get() {
+                imp.genre_label.show();
+            }
+
+            if method == SearchMethod::ReleaseDate || imp.display_labels_default.get() {
+                imp.date_label.show();
+            }
+
+            imp.duration_label.show();
+            imp.add_button.hide();
+
+            match imp.art.borrow().as_ref() {
+                Some(_art) => {
+                    imp.overlay_box.hide();
                 }
-
-                if method == SearchMethod::ReleaseDate || imp.display_labels_default.get() {
-                    imp.date_label.show();
-                }
-
-                imp.duration_label.show();
-                imp.add_button.hide();
-                
-                match imp.art.borrow().as_ref() {
-                    Some(_art) => {
-                        imp.overlay_box.hide();
-                    }
-                    None => {
-                        imp.play_icon_no_art.hide();
-                    },
-                }
-            })
-        );
+                None => {
+                    imp.play_icon_no_art.hide();
+                },
+            }
+        }));
         self.add_controller(ctrl);
 
         // let ctrl = gtk::GestureClick::new();
@@ -227,7 +227,6 @@ impl TrackPageRow {
         // );
         // self.add_controller(ctrl);
     }
-
 
     pub fn update_track(&self, track: Rc<Track>) {
         self.imp().track.replace(Some(track.clone()));
@@ -298,7 +297,6 @@ impl TrackPageRow {
         };
     }
 
-
     fn track(&self) -> Rc<Track> {
         self.imp().track.borrow().as_ref().unwrap().clone()
     }
@@ -321,19 +319,18 @@ impl TrackPageRow {
             SearchMethod::Genre => {
                 imp.genre_label.show();
                 imp.date_label.hide();
-            },
+            }
             SearchMethod::ReleaseDate => {
                 imp.genre_label.hide();
                 imp.date_label.show();
-            },
+            }
             _ => {
                 imp.genre_label.hide();
                 imp.date_label.hide();
-            },
+            }
         }
 
         imp.search_method.set(method);
-
     }
 
     fn update_sort_ui(&self) {
@@ -347,7 +344,7 @@ impl TrackPageRow {
                     imp.genre_label.show();
                     imp.date_label.show();
                 }
-            },
+            }
             SortMethod::ReleaseDate => {
                 if !imp.display_labels_default.get() {
                     imp.genre_label.hide();
@@ -356,7 +353,7 @@ impl TrackPageRow {
                     imp.genre_label.show();
                     imp.date_label.show();
                 }
-            },
+            }
             _ => {
                 if !imp.display_labels_default.get() {
                     imp.genre_label.hide();
@@ -365,8 +362,7 @@ impl TrackPageRow {
                     imp.genre_label.show();
                     imp.date_label.show();
                 }
-            },
+            }
         }
     }
-
 }

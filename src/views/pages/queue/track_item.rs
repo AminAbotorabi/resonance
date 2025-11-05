@@ -7,13 +7,13 @@
 // use adw::prelude::*;
 use adw::subclass::prelude::*;
 
+use crate::model::track::Track;
 use gtk::glib;
 use std::{cell::Cell, cell::RefCell, rc::Rc};
-use crate::model::track::Track;
 
 mod imp {
     use super::*;
-    
+
     #[derive(Debug, Default)]
     pub struct TrackItemPriv {
         pub track: RefCell<Option<Rc<Track>>>,
@@ -41,12 +41,11 @@ glib::wrapper! {
     pub struct TrackItem(ObjectSubclass<imp::TrackItemPriv>);
 }
 
-
 impl TrackItem {
     pub fn new(track: Rc<Track>, position: u64, search_string: String) -> TrackItem {
         let track_item: TrackItem = glib::Object::builder::<TrackItem>().build();
-          track_item.load(track, position, search_string);
-          track_item
+        track_item.load(track, position, search_string);
+        track_item
     }
 
     fn load(&self, track: Rc<Track>, position: u64, search_string: String) {
@@ -67,6 +66,4 @@ impl TrackItem {
     pub fn search_string(&self) -> String {
         self.imp().search_string.borrow().clone()
     }
-
 }
-    

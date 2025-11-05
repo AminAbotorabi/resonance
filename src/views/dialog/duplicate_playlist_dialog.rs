@@ -7,14 +7,18 @@
 use adw::prelude::*;
 use adw::subclass::prelude::*;
 
-use gtk::{glib, glib::{clone, Sender}, CompositeTemplate};
+use gtk::{
+    glib,
+    glib::{clone, Sender},
+    CompositeTemplate,
+};
 use gtk_macros::send;
 
-use std::{cell::RefCell, rc::Rc};
 use log::error;
+use std::{cell::RefCell, rc::Rc};
 
-use crate::model::playlist::Playlist;
 use crate::database::DatabaseAction;
+use crate::model::playlist::Playlist;
 use crate::util::database;
 
 mod imp {
@@ -41,7 +45,7 @@ mod imp {
                 db_sender: database().sender(),
             }
         }
-        
+
         fn class_init(klass: &mut Self::Class) {
             Self::bind_template(klass);
         }
@@ -58,11 +62,7 @@ mod imp {
         }
 
         fn signals() -> &'static [Signal] {
-            static SIGNALS: Lazy<Vec<Signal>> = Lazy::new(|| {
-                vec![
-                    Signal::builder("done").build(),
-                ]
-            });
+            static SIGNALS: Lazy<Vec<Signal>> = Lazy::new(|| vec![Signal::builder("done").build()]);
 
             SIGNALS.as_ref()
         }
@@ -82,7 +82,8 @@ glib::wrapper! {
 
 impl DuplicatePlaylistDialog {
     pub fn new(playlist: Rc<Playlist>) -> DuplicatePlaylistDialog {
-        let dialog: DuplicatePlaylistDialog = glib::Object::builder::<DuplicatePlaylistDialog>().build();
+        let dialog: DuplicatePlaylistDialog =
+            glib::Object::builder::<DuplicatePlaylistDialog>().build();
         dialog.imp().playlist.replace(Some(playlist));
         dialog
     }
@@ -108,10 +109,12 @@ impl DuplicatePlaylistDialog {
                 for track in playlist.tracks() {
                     tracks.push(track.id());
                 }
-                send!(imp.db_sender, DatabaseAction::DuplicatePlaylist((new_title, playlist.description(), tracks)));   
+                send!(
+                    imp.db_sender,
+                    DatabaseAction::DuplicatePlaylist((new_title, playlist.description(), tracks))
+                );
             }
         }
         self.emit_by_name::<()>("done", &[]);
     }
-
 }

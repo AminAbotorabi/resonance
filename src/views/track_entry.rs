@@ -6,21 +6,22 @@
 
 use adw::prelude::*;
 use adw::subclass::prelude::*;
-use gtk::{glib, glib::clone, CompositeTemplate, gio};
+use gtk::{gio, glib, glib::clone, CompositeTemplate};
 
-use std::{cell::{Cell, RefCell}, rc::Rc, collections::VecDeque};
 use log::debug;
-
-use crate::model::{
-    track::Track,
-    album::Album,
+use std::{
+    cell::{Cell, RefCell},
+    collections::VecDeque,
+    rc::Rc,
 };
-use crate::util::{player, seconds_to_string, settings_manager};
+
 use crate::i18n::i18n_k;
+use crate::model::{album::Album, track::Track};
+use crate::util::{player, seconds_to_string, settings_manager};
 
 mod imp {
     use super::*;
-    
+
     #[derive(Debug, CompositeTemplate)]
     #[template(resource = "/io/github/nate_xyz/Resonance/album_track_entry.ui")]
     pub struct TrackEntryPriv {
@@ -47,7 +48,6 @@ mod imp {
 
         // #[template_child(id = "popover")]
         // pub popover: TemplateChild<gtk::PopoverMenu>,
-
         pub track: RefCell<Option<Rc<Track>>>,
         pub album: RefCell<Option<Rc<Album>>>,
         pub album_from_track: Cell<bool>,
@@ -59,7 +59,6 @@ mod imp {
         const NAME: &'static str = "TrackEntry";
         type Type = super::TrackEntry;
         type ParentType = gtk::Box;
-
 
         fn new() -> Self {
             Self {
@@ -84,7 +83,6 @@ mod imp {
         fn instance_init(obj: &glib::subclass::InitializingObject<Self>) {
             obj.init_template();
         }
-
     }
 
     impl ObjectImpl for TrackEntryPriv {
@@ -105,15 +103,28 @@ glib::wrapper! {
 }
 
 impl TrackEntry {
-    pub fn new(album: Rc<Album>, track: Rc<Track>, track_n: i32, disc_n: i32, char_width: i32) -> TrackEntry {
+    pub fn new(
+        album: Rc<Album>,
+        track: Rc<Track>,
+        track_n: i32,
+        disc_n: i32,
+        char_width: i32,
+    ) -> TrackEntry {
         let track_button: TrackEntry = glib::Object::builder::<TrackEntry>().build();
         track_button.construct(album, track, track_n, disc_n, char_width);
         track_button
     }
 
-    fn construct(&self, album: Rc<Album>, track: Rc<Track>, track_n: i32, disc_n: i32, char_width: i32) {
+    fn construct(
+        &self,
+        album: Rc<Album>,
+        track: Rc<Track>,
+        track_n: i32,
+        disc_n: i32,
+        char_width: i32,
+    ) {
         let imp = self.imp();
-        
+
         //imp.popover.set_parent(self);
 
         imp.settings.connect_changed(
@@ -124,8 +135,9 @@ impl TrackEntry {
                 this.imp().album_from_track.set(album_from_track);
             }),
         );
-        imp.album_from_track.set(imp.settings.boolean("album-from-track"));
-    
+        imp.album_from_track
+            .set(imp.settings.boolean("album-from-track"));
+
         imp.track_name_label.set_max_width_chars(char_width);
 
         imp.track_button.connect_clicked(
@@ -134,8 +146,8 @@ impl TrackEntry {
                     player().clear_play_album(this.reordered_album(), Some(this.album().title()))
                 } else {
                     player().clear_play_track(this.track());
-                }                
-            })
+                }
+            }),
         );
 
         imp.add_button.connect_clicked(
@@ -144,20 +156,28 @@ impl TrackEntry {
                     player().add_album(this.reordered_album())
                 } else {
                     player().add_track(this.track());
-                }               
-            })
+                }
+            }),
         );
-   
-        imp.track_button.set_tooltip_text(Some(&i18n_k("Play {track_title}", &[("track_title", &track.title())])));
-        imp.add_button.set_tooltip_text(Some(&i18n_k("Add {track_title} to Playlist", &[("track_title", &track.title())])));
-        
+
+        imp.track_button.set_tooltip_text(Some(&i18n_k(
+            "Play {track_title}",
+            &[("track_title", &track.title())],
+        )));
+        imp.add_button.set_tooltip_text(Some(&i18n_k(
+            "Add {track_title} to Playlist",
+            &[("track_title", &track.title())],
+        )));
+
         imp.track_name_label.set_label(&track.title());
-        imp.time_label.set_label(&seconds_to_string(track.duration()));
-        
+        imp.time_label
+            .set_label(&seconds_to_string(track.duration()));
+
         if disc_n <= 1 {
             imp.number_label.set_label(&format!("{:02} - ", track_n));
         } else {
-            imp.number_label.set_label(&format!("{:02}:{:02} - ", disc_n+1, track_n));
+            imp.number_label
+                .set_label(&format!("{:02}:{:02} - ", disc_n + 1, track_n));
         }
 
         imp.track.replace(Some(track));
@@ -177,20 +197,16 @@ impl TrackEntry {
         // self.add_controller(ctrl);
 
         let ctrl = gtk::EventControllerMotion::new();
-        ctrl.connect_enter(
-            clone!(@strong self as this => move |_controller, _x, _y| {
-                let imp = this.imp();
-                imp.add_button.show();
-                imp.play_icon.show();
-            })
-        );
-        ctrl.connect_leave(
-            clone!(@strong self as this => move |_controller| {
-                let imp = this.imp();
-                imp.add_button.hide();
-                imp.play_icon.hide();
-            })
-        );
+        ctrl.connect_enter(clone!(@strong self as this => move |_controller, _x, _y| {
+            let imp = this.imp();
+            imp.add_button.show();
+            imp.play_icon.show();
+        }));
+        ctrl.connect_leave(clone!(@strong self as this => move |_controller| {
+            let imp = this.imp();
+            imp.add_button.hide();
+            imp.play_icon.hide();
+        }));
         self.add_controller(ctrl);
     }
 
@@ -207,12 +223,14 @@ impl TrackEntry {
         let mut d = VecDeque::from(album.tracks());
         let track = self.track();
 
-        let track_n  = if track.disc_number() <= 1 {
+        let track_n = if track.disc_number() <= 1 {
             track.track_number() as usize - 1
         } else {
-            debug!("retrieving track index, disc number is {}", track.disc_number());
+            debug!(
+                "retrieving track index, disc number is {}",
+                track.disc_number()
+            );
             album.track_index(track.track_number(), track.disc_number())
-            
         };
         debug!("track index is {}", track_n);
         d.rotate_left(track_n);
@@ -220,4 +238,3 @@ impl TrackEntry {
         v
     }
 }
-    

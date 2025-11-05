@@ -8,11 +8,18 @@ use adw::prelude::*;
 use gtk::{gio, glib, glib::clone, glib::Receiver, glib::Sender};
 use gtk_macros::send;
 
-use std::{cell::{Cell, RefCell}, error::Error, fmt, rc::Rc, thread, time, collections::HashMap};
-use serde::{Deserialize, Serialize};
-use log::{debug, error};
 use chrono;
+use log::{debug, error};
 use reqwest;
+use serde::{Deserialize, Serialize};
+use std::{
+    cell::{Cell, RefCell},
+    collections::HashMap,
+    error::Error,
+    fmt,
+    rc::Rc,
+    thread, time,
+};
 
 use crate::model::track::Track;
 use crate::util::settings_manager;
@@ -33,7 +40,6 @@ struct SessionKeyResultB {
 struct SessionKeyResult {
     session: SessionKeyResultB,
 }
-
 
 #[derive(Clone, Debug)]
 pub enum LastFmAction {
@@ -71,7 +77,11 @@ impl fmt::Debug for ResonanceLastFM {
 const LASTFM_API_KEY: &str = "0050bff002a877c2fd1c6001a32ab514";
 const LASTFM_API_SECRET: &str = "ac6bbca2fee7f6fa28524526d0d49cca";
 const LASTFM_API_ROOT: &str = "https://ws.audioscrobbler.com/2.0/?format=json";
-const APP_USER_AGENT: &str = concat!("io.github.nate_xyz.Resonance", "/", env!("CARGO_PKG_VERSION"));
+const APP_USER_AGENT: &str = concat!(
+    "io.github.nate_xyz.Resonance",
+    "/",
+    env!("CARGO_PKG_VERSION")
+);
 
 impl ResonanceLastFM {
     pub fn new(receiver: Receiver<LastFmAction>) -> Rc<Self> {
@@ -136,7 +146,7 @@ impl ResonanceLastFM {
                     Ok(_) => (),
                     Err(e) => error!("Unable to set track playing: {}", e),
                 }
-            },
+            }
             LastFmAction::Scrobble(track) => {
                 if !self.enabled.get() {
                     return glib::Continue(true);
@@ -145,32 +155,27 @@ impl ResonanceLastFM {
                     Ok(_) => (),
                     Err(e) => error!("Unable to scrobble track: {}", e),
                 }
-            },
+            }
         }
         glib::Continue(true)
     }
 
     fn process_internal_lastfm_action(&self, action: ThreadedLastFmAction) -> glib::Continue {
         match action {
-            ThreadedLastFmAction::RequestToken(token) => {
-                match self.set_request_token(token) {
-                    Ok(_) => (),
-                    Err(e) => error!("Unable to set last fm request token: {}", e),
-                }
+            ThreadedLastFmAction::RequestToken(token) => match self.set_request_token(token) {
+                Ok(_) => (),
+                Err(e) => error!("Unable to set last fm request token: {}", e),
             },
-            ThreadedLastFmAction::SessionKey(token) => {
-                match self.set_session_key(token) {
-                    Ok(_) => (),
-                    Err(e) => error!("Unable to set last fm session key: {}", e),
-                }
+            ThreadedLastFmAction::SessionKey(token) => match self.set_session_key(token) {
+                Ok(_) => (),
+                Err(e) => error!("Unable to set last fm session key: {}", e),
             },
             ThreadedLastFmAction::HandleErrorResponse(code) => {
                 match self.handle_error_response(code) {
                     Ok(_) => (),
                     Err(e) => error!("Unable to handle error response: {}", e),
                 }
-            }
-            // _ => debug!("Received action {:?}", action),
+            } // _ => debug!("Received action {:?}", action),
         }
         glib::Continue(true)
     }
@@ -182,17 +187,14 @@ impl ResonanceLastFM {
             let sender = self.tx.clone();
 
             debug!("No session key found, retrieving Last.FM request token");
-            thread::spawn(move || {
-                match get_request_token() {
-                    Ok(token) => {
-                        if let Some(t) = token {
-                            send!(sender, ThreadedLastFmAction::RequestToken(t));
-                        }
-                    },
-                    Err(e) => error!("Unable to retrieve request token: {}", e),
+            thread::spawn(move || match get_request_token() {
+                Ok(token) => {
+                    if let Some(t) = token {
+                        send!(sender, ThreadedLastFmAction::RequestToken(t));
+                    }
                 }
+                Err(e) => error!("Unable to retrieve request token: {}", e),
             });
-
         } else {
             debug!("Already have Last.FM session key: {}", session_key);
             self.session_key.replace(Some(session_key));
@@ -202,7 +204,11 @@ impl ResonanceLastFM {
     }
 
     fn set_request_token(&self, token: String) -> Result<(), Box<dyn Error>> {
-        let url = format!("http://www.last.fm/api/auth/?api_key={}&token={}", LASTFM_API_KEY, token.clone());
+        let url = format!(
+            "http://www.last.fm/api/auth/?api_key={}&token={}",
+            LASTFM_API_KEY,
+            token.clone()
+        );
         open::that(&url)?;
 
         let sender = self.tx.clone();
@@ -219,15 +225,14 @@ impl ResonanceLastFM {
                         } else {
                             error!("Unable to retrieve session key");
                         }
-                    },
+                    }
                     Err(e) => {
                         error!("Unable to retrieve session key: {}", e);
                         break;
-                    },
+                    }
                 }
                 debug!("Did not retrieve token, polling again ...");
             }
-
         });
 
         Ok(())
@@ -236,7 +241,8 @@ impl ResonanceLastFM {
     fn set_session_key(&self, session_key: String) -> Result<(), Box<dyn Error>> {
         debug!("Setting session key");
 
-        self.settings.set_string("last-fm-session-key", &session_key)?;
+        self.settings
+            .set_string("last-fm-session-key", &session_key)?;
         self.session_key.replace(Some(session_key));
         Ok(())
     }
@@ -273,7 +279,7 @@ impl ResonanceLastFM {
                 let artist = track.artist();
                 let album = track.album();
                 let track_name = track.title();
-    
+
                 let sender = self.tx.clone();
 
                 thread::spawn(move || {
@@ -288,7 +294,8 @@ impl ResonanceLastFM {
     }
 
     fn handle_error_response(&self, code: reqwest::StatusCode) -> Result<(), Box<dyn Error>> {
-        if code == 9 { //invalid session key -> need to re-authenticate
+        if code == 9 {
+            //invalid session key -> need to re-authenticate
             self.settings.set_string("last-fm-session-key", "")?;
             self.session_key.replace(None);
             self.retrieve_request_token()?;
@@ -296,14 +303,10 @@ impl ResonanceLastFM {
 
         Ok(())
     }
-
 }
 
-fn get_request_token() -> Result<Option<String>, Box<dyn Error>> {    
-    let params = [
-        ("api_key", LASTFM_API_KEY),
-        ("method", "auth.gettoken"),
-    ];
+fn get_request_token() -> Result<Option<String>, Box<dyn Error>> {
+    let params = [("api_key", LASTFM_API_KEY), ("method", "auth.gettoken")];
 
     let url = reqwest::Url::parse_with_params(LASTFM_API_ROOT, &params)?;
 
@@ -311,9 +314,7 @@ fn get_request_token() -> Result<Option<String>, Box<dyn Error>> {
         .user_agent(APP_USER_AGENT)
         .build()?;
 
-    let response = client.get(url)
-        .header("Accept", "application/json")
-        .send();
+    let response = client.get(url).header("Accept", "application/json").send();
 
     if let Ok(response) = response {
         if response.status() != 200 {
@@ -331,14 +332,13 @@ fn get_request_token() -> Result<Option<String>, Box<dyn Error>> {
     Ok(None)
 }
 
-
 fn get_session_key(token: String) -> Result<Option<String>, Box<dyn Error>> {
     let mut params = HashMap::new();
-    
+
     params.insert("api_key", LASTFM_API_KEY);
     params.insert("method", "auth.getSession");
     params.insert("token", token.as_str());
-    
+
     let api_signature = get_signature(&params);
 
     params.insert("api_sig", api_signature.as_str());
@@ -349,9 +349,7 @@ fn get_session_key(token: String) -> Result<Option<String>, Box<dyn Error>> {
         .user_agent(APP_USER_AGENT)
         .build()?;
 
-    let response = client.get(url)
-        .header("Accept", "application/json")
-        .send();
+    let response = client.get(url).header("Accept", "application/json").send();
 
     if let Ok(response) = response {
         if response.status() != 200 {
@@ -359,13 +357,12 @@ fn get_session_key(token: String) -> Result<Option<String>, Box<dyn Error>> {
             return Ok(None);
         }
 
-        let token = response.json::<SessionKeyResult>()?;    
+        let token = response.json::<SessionKeyResult>()?;
         debug!("Retrieved session key: {:?}", token.session.key);
         return Ok(Some(token.session.key));
     }
     Ok(None)
 }
-
 
 // artist (Required) : The artist name.
 // track (Required) : The track name.
@@ -379,9 +376,15 @@ fn get_session_key(token: String) -> Result<Option<String>, Box<dyn Error>> {
 // api_sig (Required) : A Last.fm method signature. See authentication for more information.
 // sk (Required) : A session key generated by authenticating a user via the authentication protocol.
 
-fn update_now_playing(sender: Sender<ThreadedLastFmAction>, session_key: String, artist: String, track: String, album: String) -> Result<(), Box<dyn Error>> {    
+fn update_now_playing(
+    sender: Sender<ThreadedLastFmAction>,
+    session_key: String,
+    artist: String,
+    track: String,
+    album: String,
+) -> Result<(), Box<dyn Error>> {
     let mut params = HashMap::new();
-    
+
     params.insert("api_key", LASTFM_API_KEY);
     params.insert("sk", session_key.as_str());
     params.insert("method", "track.updateNowPlaying");
@@ -396,27 +399,25 @@ fn update_now_playing(sender: Sender<ThreadedLastFmAction>, session_key: String,
         .user_agent(APP_USER_AGENT)
         .build()?;
 
-    let response = client.post(LASTFM_API_ROOT)
-        .form(&params)
-        .send();
+    let response = client.post(LASTFM_API_ROOT).form(&params).send();
 
     if let Ok(response) = response {
         let status = response.status();
         if status != 200 {
-            if status == 9 { //only handle invalid session key for now
+            if status == 9 {
+                //only handle invalid session key for now
                 send!(sender, ThreadedLastFmAction::HandleErrorResponse(status));
             }
             error!("get_session_key: Status, {}", response.status());
-            let body = response.text()?;    
+            let body = response.text()?;
             error!("Now playing: {:?}", body);
         } else {
-            let body = response.text()?;    
+            let body = response.text()?;
             debug!("Now playing: {:?}", body);
         }
     }
     Ok(())
 }
-
 
 // artist[i] (Required) : The artist name.
 // track[i] (Required) : The track name.
@@ -433,11 +434,18 @@ fn update_now_playing(sender: Sender<ThreadedLastFmAction>, session_key: String,
 // api_sig (Required) : A Last.fm method signature. See authentication for more information.
 // sk (Required) : A session key generated by authenticating a user via the authentication protocol.
 
-fn scrobble(sender: Sender<ThreadedLastFmAction>, session_key: String, artist: String, track: String, album: String, started_playing: chrono::DateTime<chrono::Utc>) -> Result<(), Box<dyn Error>> {
+fn scrobble(
+    sender: Sender<ThreadedLastFmAction>,
+    session_key: String,
+    artist: String,
+    track: String,
+    album: String,
+    started_playing: chrono::DateTime<chrono::Utc>,
+) -> Result<(), Box<dyn Error>> {
     let time_stamp = format!("{}", started_playing.timestamp());
 
     let mut params = HashMap::new();
-    
+
     params.insert("api_key", LASTFM_API_KEY);
     params.insert("artist", artist.as_str());
     params.insert("track", track.as_str());
@@ -445,30 +453,29 @@ fn scrobble(sender: Sender<ThreadedLastFmAction>, session_key: String, artist: S
     params.insert("method", "track.scrobble");
     params.insert("timestamp", &time_stamp);
     params.insert("sk", session_key.as_str());
-    
+
     let api_signature = get_signature(&params);
 
     params.insert("api_sig", api_signature.as_str());
-        
+
     let client = reqwest::blocking::Client::builder()
         .user_agent(APP_USER_AGENT)
         .build()?;
 
-    let response = client.post(LASTFM_API_ROOT)
-        .form(&params)
-        .send();
+    let response = client.post(LASTFM_API_ROOT).form(&params).send();
 
     if let Ok(response) = response {
         let status = response.status();
         if status != 200 {
-            if status == 9 { //only handle invalid session key for now
+            if status == 9 {
+                //only handle invalid session key for now
                 send!(sender, ThreadedLastFmAction::HandleErrorResponse(status));
             }
             error!("get_session_key: Status, {}", response.status());
-            let body = response.text()?;    
+            let body = response.text()?;
             error!("Scrobble error: {:?}", body);
         } else {
-            let body = response.text()?;    
+            let body = response.text()?;
             debug!("Scrobble: {:?}", body);
         }
     }
@@ -477,7 +484,7 @@ fn scrobble(sender: Sender<ThreadedLastFmAction>, session_key: String, artist: S
 
 fn get_signature(params: &HashMap<&str, &str>) -> String {
     let sig_params = params.clone();
-    
+
     let mut keys = Vec::new();
     for k in sig_params.keys() {
         keys.push(k);
@@ -494,5 +501,3 @@ fn get_signature(params: &HashMap<&str, &str>) -> String {
 
     format!("{:x}", md5::compute(sig.as_bytes()))
 }
-
-

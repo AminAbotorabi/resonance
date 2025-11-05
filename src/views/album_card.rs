@@ -9,16 +9,13 @@ use adw::subclass::prelude::*;
 
 use gtk::{glib, glib::clone, CompositeTemplate};
 
-use std::{cell::RefCell, rc::Rc};
-use std::collections::HashMap;
 use log::error;
+use std::collections::HashMap;
+use std::{cell::RefCell, rc::Rc};
 
-use crate::model::{
-    album::Album,
-    track::Track,
-};
-use crate::util::{model, player, seconds_to_string_longform};
 use crate::i18n::{i18n, i18n_k};
+use crate::model::{album::Album, track::Track};
+use crate::util::{model, player, seconds_to_string_longform};
 
 use super::art::rounded_album_art::RoundedAlbumArt;
 use super::disc_button::DiscButton;
@@ -29,7 +26,7 @@ mod imp {
 
     #[derive(Debug, Default, CompositeTemplate)]
     #[template(resource = "/io/github/nate_xyz/Resonance/album_card.ui")]
-    pub struct AlbumCardPriv  {
+    pub struct AlbumCardPriv {
         #[template_child(id = "art_and_info_box")]
         pub art_and_info_box: TemplateChild<gtk::Box>,
 
@@ -94,7 +91,6 @@ mod imp {
         fn instance_init(obj: &glib::subclass::InitializingObject<Self>) {
             obj.init_template();
         }
-
     }
 
     impl ObjectImpl for AlbumCardPriv {
@@ -131,7 +127,7 @@ impl AlbumCard {
                 clone!(@strong self as this => @default-panic, move |_button| {
                     let album = this.album();
                     player().clear_play_album(album.tracks(), Some(album.title()));
-                })
+                }),
             );
         }
 
@@ -141,21 +137,17 @@ impl AlbumCard {
                 clone!(@strong self as this => @default-panic, move |_button| {
                     let tracks = this.album().tracks();
                     player().add_album(tracks);
-                })
+                }),
             );
         }
 
         let ctrl = gtk::EventControllerMotion::new();
-        ctrl.connect_enter(
-            clone!(@strong self as this => move |_controller, _x, _y| {
-                this.imp().overlay_box.show();
-            })
-        );
-        ctrl.connect_leave(
-            clone!(@strong self as this => move |_controller| {
-                this.imp().overlay_box.hide();
-            })
-        );
+        ctrl.connect_enter(clone!(@strong self as this => move |_controller, _x, _y| {
+            this.imp().overlay_box.show();
+        }));
+        ctrl.connect_leave(clone!(@strong self as this => move |_controller| {
+            this.imp().overlay_box.hide();
+        }));
         imp.overlay.add_controller(ctrl);
 
         // let ctrl = gtk::GestureClick::new();
@@ -186,7 +178,6 @@ impl AlbumCard {
 
         match imp.album.borrow().as_ref() {
             Some(album) => {
-
                 // CONSTRUCT UI
                 // let track_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
                 let disc_map = album.discs();
@@ -199,7 +190,6 @@ impl AlbumCard {
                     disc_box.set_valign(gtk::Align::Fill);
                     disc_box.set_halign(gtk::Align::Fill);
                     disc_box.set_hexpand(true);
-                    
 
                     if num_discs > 1 {
                         let box_ = gtk::Box::new(gtk::Orientation::Horizontal, 0);
@@ -213,13 +203,10 @@ impl AlbumCard {
                         imp.track_box.append(&box_);
                     }
 
-
-
                     let first_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
                     first_box.set_valign(gtk::Align::Fill);
                     first_box.set_halign(gtk::Align::Fill);
                     first_box.set_hexpand(true);
-                    
 
                     let total_tracks = disc.len();
                     if total_tracks > 3 {
@@ -233,14 +220,13 @@ impl AlbumCard {
                         grid.set_row_spacing(0);
                         grid.set_selection_mode(gtk::SelectionMode::None);
                         grid.set_homogeneous(true);
-                                                    
-                    
+
                         let second_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
                         second_box.set_valign(gtk::Align::Fill);
                         second_box.set_halign(gtk::Align::Fill);
                         second_box.set_hexpand(true);
 
-                        let second_box_amount = total_tracks/2;
+                        let second_box_amount = total_tracks / 2;
                         let first_box_amount = total_tracks - second_box_amount;
 
                         grid.append(&first_box);
@@ -250,10 +236,16 @@ impl AlbumCard {
                         album_vec.sort_by(|a, b| a.0.cmp(b.0));
                         for (track_n, track) in album_vec {
                             let track = track.clone();
-                            let entry = TrackEntry::new(album.clone(), track, *track_n as i32, *disc_n as i32, 27);
+                            let entry = TrackEntry::new(
+                                album.clone(),
+                                track,
+                                *track_n as i32,
+                                *disc_n as i32,
+                                27,
+                            );
                             // entry.set_player(self.player.borrow().as_ref().unwrap().clone());
 
-                            if *track_n <= first_box_amount as i64  {
+                            if *track_n <= first_box_amount as i64 {
                                 first_box.append(&entry);
                             } else {
                                 second_box.append(&entry);
@@ -262,21 +254,25 @@ impl AlbumCard {
                         }
 
                         disc_box.append(&grid);
-
                     } else {
                         disc_box.append(&first_box);
                         let mut album_vec: Vec<(&i64, &Rc<Track>)> = disc.iter().collect();
                         album_vec.sort_by(|a, b| a.0.cmp(b.0));
                         for (track_n, track) in album_vec {
                             let track = track.clone();
-                            let entry = TrackEntry::new(album.clone(), track, *track_n as i32, *disc_n as i32, 27);                            
+                            let entry = TrackEntry::new(
+                                album.clone(),
+                                track,
+                                *track_n as i32,
+                                *disc_n as i32,
+                                27,
+                            );
                             first_box.append(&entry);
                             //self.track_children.add(&entry);
                         }
                     }
 
                     imp.track_box.append(&disc_box);
-
                 }
 
                 //SET LABELS
@@ -294,17 +290,20 @@ impl AlbumCard {
                 if n_tracks <= 1 {
                     imp.track_amount_label.set_label(&i18n("1 track"));
                 } else {
-                    imp.track_amount_label.set_label(&i18n_k("{number_of_tracks} tracks", &[("number_of_tracks", &format!("{}", n_tracks))]));
+                    imp.track_amount_label.set_label(&i18n_k(
+                        "{number_of_tracks} tracks",
+                        &[("number_of_tracks", &format!("{}", n_tracks))],
+                    ));
                 }
 
                 let duration = album.duration();
                 if duration > 0.0 {
-                    imp.duration_label.set_label(&seconds_to_string_longform(duration));
+                    imp.duration_label
+                        .set_label(&seconds_to_string_longform(duration));
                 } else {
                     imp.duration_label.hide();
                 }
-        
-        
+
                 //LOAD ART
                 self.load_art(album.cover_art_id());
 
@@ -313,7 +312,7 @@ impl AlbumCard {
             None => {
                 imp.art_bin.set_child(gtk::Widget::NONE);
                 imp.no_art_button_box.show();
-            },
+            }
         }
     }
 
@@ -344,8 +343,8 @@ impl AlbumCard {
         art.load(pixbuf);
         Ok(art)
     }
-    
-    fn album(&self ) -> Rc<Album> {
+
+    fn album(&self) -> Rc<Album> {
         self.imp().album.borrow().as_ref().unwrap().clone()
     }
 }

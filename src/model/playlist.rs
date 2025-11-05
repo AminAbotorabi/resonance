@@ -5,14 +5,14 @@
  */
 
 use glib::prelude::ToVariant;
-use gtk::{glib, gio};
 use gtk::subclass::prelude::*;
+use gtk::{gio, glib};
 
-use std::collections::{HashSet, HashMap};
+use std::collections::{HashMap, HashSet};
 use std::{cell::Cell, cell::RefCell, rc::Rc};
 
-use super::track::Track;
 use super::playlist_entry::PlaylistEntry;
+use super::track::Track;
 
 use chrono::{DateTime, Utc};
 
@@ -32,14 +32,12 @@ mod imp {
         pub menu: gio::Menu,
     }
 
-
     #[glib::object_subclass]
     impl ObjectSubclass for PlaylistPriv {
         const NAME: &'static str = "Playlist";
         type Type = super::Playlist;
         type ParentType = glib::Object;
     }
-
 
     impl ObjectImpl for PlaylistPriv {
         fn constructed(&self) {
@@ -55,13 +53,26 @@ glib::wrapper! {
 }
 
 impl Playlist {
-    pub fn new(id: i64, title: String, description: String, creation_time: DateTime<Utc>, modify_time: DateTime<Utc>) -> Playlist {
+    pub fn new(
+        id: i64,
+        title: String,
+        description: String,
+        creation_time: DateTime<Utc>,
+        modify_time: DateTime<Utc>,
+    ) -> Playlist {
         let playlist: Playlist = glib::Object::builder::<Playlist>().build();
         playlist.load(id, title, description, creation_time, modify_time);
         playlist
     }
 
-    fn load(&self, id: i64, title: String, description: String, creation_time: DateTime<Utc>, modify_time: DateTime<Utc>) {
+    fn load(
+        &self,
+        id: i64,
+        title: String,
+        description: String,
+        creation_time: DateTime<Utc>,
+        modify_time: DateTime<Utc>,
+    ) {
         let imp = self.imp();
         imp.id.set(id);
         imp.title.replace(title);
@@ -133,56 +144,75 @@ impl Playlist {
 
         let imp = self.imp();
 
-        imp.total_duration.set(imp.total_duration.get() + track.duration());
-        
+        imp.total_duration
+            .set(imp.total_duration.get() + track.duration());
+
         if let Some(art_id) = track.cover_art_option() {
             imp.cover_art_ids.borrow_mut().insert(art_id);
         }
 
         let entry = PlaylistEntry::new(id, playlist_position, self.id(), track);
-        imp.entries.borrow_mut().insert(playlist_position, Rc::new(entry));
+        imp.entries
+            .borrow_mut()
+            .insert(playlist_position, Rc::new(entry));
     }
 
     #[allow(dead_code)]
     fn create_menu(&self) {
         let imp = self.imp();
-        
+
         let menu = gio::Menu::new();
 
         let menu_item = gio::MenuItem::new(Some(&format!("Play «{}»", self.title())), None);
-        menu_item.set_action_and_target_value(Some("win.play-playlist"), Some(&imp.id.get().to_variant()));
+        menu_item.set_action_and_target_value(
+            Some("win.play-playlist"),
+            Some(&imp.id.get().to_variant()),
+        );
         menu.append_item(&menu_item);
 
         let menu_item = gio::MenuItem::new(Some(&format!("Add «{}» to Queue", self.title())), None);
-        menu_item.set_action_and_target_value(Some("win.add-playlist-to-queue"), Some(&imp.id.get().to_variant()));
+        menu_item.set_action_and_target_value(
+            Some("win.add-playlist-to-queue"),
+            Some(&imp.id.get().to_variant()),
+        );
         menu.append_item(&menu_item);
 
         imp.menu.append_section(Some("Play"), &menu);
 
         let menu = gio::Menu::new();
 
-        let menu_item = gio::MenuItem::new(Some(&format!("Go to Playlist «{}» Detail", self.title())), None);
-        menu_item.set_action_and_target_value(Some("win.go-to-playlist-detail"), Some(&imp.id.get().to_variant()));
+        let menu_item = gio::MenuItem::new(
+            Some(&format!("Go to Playlist «{}» Detail", self.title())),
+            None,
+        );
+        menu_item.set_action_and_target_value(
+            Some("win.go-to-playlist-detail"),
+            Some(&imp.id.get().to_variant()),
+        );
         menu.append_item(&menu_item);
 
         imp.menu.append_section(Some("Navigate"), &menu);
 
         let menu = gio::Menu::new();
-        
+
         let menu_item = gio::MenuItem::new(Some(&format!("Duplicate «{}»", self.title())), None);
-        menu_item.set_action_and_target_value(Some("win.duplicate-playlist"), Some(&imp.id.get().to_variant()));
+        menu_item.set_action_and_target_value(
+            Some("win.duplicate-playlist"),
+            Some(&imp.id.get().to_variant()),
+        );
         menu.append_item(&menu_item);
 
         let menu_item = gio::MenuItem::new(Some(&format!("Delete «{}»", self.title())), None);
-        menu_item.set_action_and_target_value(Some("win.delete-playlist"), Some(&imp.id.get().to_variant()));
+        menu_item.set_action_and_target_value(
+            Some("win.delete-playlist"),
+            Some(&imp.id.get().to_variant()),
+        );
         menu.append_item(&menu_item);
 
         imp.menu.append_section(Some("Playlist"), &menu);
     }
 
-    pub fn menu_model(&self)-> &gio::Menu {
+    pub fn menu_model(&self) -> &gio::Menu {
         &self.imp().menu
     }
-
 }
-    

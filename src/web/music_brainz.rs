@@ -4,20 +4,22 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
- use gtk::{
+use gtk::{
     glib,
     glib::{clone, Receiver, Sender},
 };
 use gtk_macros::send;
 
-use std::{cell::RefCell, thread};
-use std::{collections::{HashSet, HashMap}, rc::Rc};
 use log::error;
 use reqwest;
 use serde::{Deserialize, Serialize};
+use std::{cell::RefCell, thread};
+use std::{
+    collections::{HashMap, HashSet},
+    rc::Rc,
+};
 
 use crate::model::track::Track;
-
 
 #[derive(Clone, Debug)]
 pub enum MusicBrainzAction {
@@ -56,7 +58,8 @@ impl ResonanceMusicBrainz {
     pub fn new(
         receiver: Receiver<MusicBrainzAction>,
         sender_mb_mpris: Sender<(i64, String)>,
-        sender_mb_discord: Sender<(i64, Option<String>)>) -> Rc<Self> {
+        sender_mb_discord: Sender<(i64, Option<String>)>,
+    ) -> Rc<Self> {
         let (tx, rx) = glib::MainContext::channel(glib::PRIORITY_LOW);
         let mbz = Self {
             id_cache: RefCell::new(HashMap::new()),
@@ -109,12 +112,16 @@ impl ResonanceMusicBrainz {
                 if is_mpris {
                     if let Some(url) = art_url {
                         send!(self.sender_mb_mpris, (album_id, url.clone()));
-                        self.url_cache.borrow_mut().insert((mb_ids.clone(), size), url);
+                        self.url_cache
+                            .borrow_mut()
+                            .insert((mb_ids.clone(), size), url);
                     }
                 } else {
                     if let Some(url) = art_url {
                         send!(self.sender_mb_discord, (album_id, Some(url.clone())));
-                        self.url_cache.borrow_mut().insert((mb_ids.clone(), size), url);
+                        self.url_cache
+                            .borrow_mut()
+                            .insert((mb_ids.clone(), size), url);
                     } else {
                         send!(self.sender_mb_discord, (album_id, None))
                     }
@@ -156,9 +163,17 @@ impl ResonanceMusicBrainz {
 
                         thread::spawn(move || {
                             let art_url = first_valid_art_url(music_brainz_ids.clone(), 500);
-                            send!(sender, ThreadedMusicBrainzAction::ValidArtUrl((is_mpris, 500, album_id, music_brainz_ids, art_url)));
+                            send!(
+                                sender,
+                                ThreadedMusicBrainzAction::ValidArtUrl((
+                                    is_mpris,
+                                    500,
+                                    album_id,
+                                    music_brainz_ids,
+                                    art_url
+                                ))
+                            );
                         });
-
                     }
                     // if let Some(url) = first_valid_art_url(music_brainz_ids, 500) {
                     //     send!(self.sender_mb_mpris, (album_id, url));
@@ -181,7 +196,16 @@ impl ResonanceMusicBrainz {
 
                         thread::spawn(move || {
                             let art_url = first_valid_art_url(music_brainz_ids.clone(), 250);
-                            send!(sender, ThreadedMusicBrainzAction::ValidArtUrl((is_mpris, 250, album_id, music_brainz_ids, art_url)));
+                            send!(
+                                sender,
+                                ThreadedMusicBrainzAction::ValidArtUrl((
+                                    is_mpris,
+                                    250,
+                                    album_id,
+                                    music_brainz_ids,
+                                    art_url
+                                ))
+                            );
                         });
                     }
                     return;
@@ -193,7 +217,10 @@ impl ResonanceMusicBrainz {
 
         thread::spawn(move || {
             let music_brainz_id = music_brainz_id(artist, album);
-            send!(sender, ThreadedMusicBrainzAction::MusicBrainzId((is_mpris, album_id, music_brainz_id)));
+            send!(
+                sender,
+                ThreadedMusicBrainzAction::MusicBrainzId((is_mpris, album_id, music_brainz_id))
+            );
         });
     }
 
@@ -209,7 +236,12 @@ impl ResonanceMusicBrainz {
                     self.thread_spawned_already.borrow_mut().insert(album_id);
                     thread::spawn(move || {
                         let art_url = first_valid_art_url(ids.clone(), 500);
-                        send!(sender, ThreadedMusicBrainzAction::ValidArtUrl((is_mpris, 500, album_id, ids, art_url)));
+                        send!(
+                            sender,
+                            ThreadedMusicBrainzAction::ValidArtUrl((
+                                is_mpris, 500, album_id, ids, art_url
+                            ))
+                        );
                     });
                 }
             }
@@ -219,7 +251,12 @@ impl ResonanceMusicBrainz {
                     self.thread_spawned_already.borrow_mut().insert(album_id);
                     thread::spawn(move || {
                         let art_url = first_valid_art_url(ids.clone(), 250);
-                        send!(sender, ThreadedMusicBrainzAction::ValidArtUrl((is_mpris, 250, album_id, ids, art_url)));
+                        send!(
+                            sender,
+                            ThreadedMusicBrainzAction::ValidArtUrl((
+                                is_mpris, 250, album_id, ids, art_url
+                            ))
+                        );
                     });
                 }
             } else {
@@ -233,11 +270,17 @@ fn music_brainz_id(artist: String, album: String) -> Option<Vec<String>> {
     //static APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
 
     static APP_USER_AGENT: &str = concat!(
-        "io.github.nate_xyz.Resonance", "/", env!("CARGO_PKG_VERSION"));
+        "io.github.nate_xyz.Resonance",
+        "/",
+        env!("CARGO_PKG_VERSION")
+    );
 
     let query = format!("trackartist:{} AND release:{}", &artist, &album);
 
-    let url = format!("https://musicbrainz.org/ws/2/release/?query={}&limit=2", query);
+    let url = format!(
+        "https://musicbrainz.org/ws/2/release/?query={}&limit=2",
+        query
+    );
 
     let client = reqwest::blocking::Client::builder()
         .user_agent(APP_USER_AGENT)

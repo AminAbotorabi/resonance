@@ -9,24 +9,25 @@ use adw::subclass::prelude::*;
 
 use gtk::{gio, gio::ListStore, glib, glib::clone, CompositeTemplate};
 
-use std::{cell::{RefCell, Cell}, rc::Rc};
-use std::time::Duration;
 use log::{debug, error};
+use std::time::Duration;
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
 
 use crate::model::artist::Artist;
-use crate::views::generic_flowbox_child::{GenericFlowboxChild, GenericChild};
 use crate::search::{FuzzyFilter, SearchSortObject};
 use crate::sort::{FuzzySorter, SortMethod};
 use crate::util::model;
+use crate::views::generic_flowbox_child::{GenericChild, GenericFlowboxChild};
 
 mod imp {
     use super::*;
     use glib::subclass::Signal;
-    use glib::{
-        Value, ParamSpec, ParamSpecBoolean, ParamSpecEnum
-    };
+    use glib::{ParamSpec, ParamSpecBoolean, ParamSpecEnum, Value};
     use once_cell::sync::Lazy;
-    
+
     #[derive(Debug, Default, CompositeTemplate)]
     #[template(resource = "/io/github/nate_xyz/Resonance/artist_grid_page.ui")]
     pub struct ArtistGridPagePriv {
@@ -69,7 +70,6 @@ mod imp {
         fn instance_init(obj: &glib::subclass::InitializingObject<Self>) {
             obj.init_template();
         }
-
     }
 
     impl ObjectImpl for ArtistGridPagePriv {
@@ -79,20 +79,23 @@ mod imp {
         }
 
         fn properties() -> &'static [ParamSpec] {
-            static PROPERTIES: Lazy<Vec<ParamSpec>> =
-                Lazy::new(|| vec![
-                    ParamSpecBoolean::builder("hidden").default_value(false).build(),
-                    ParamSpecEnum::builder::<SortMethod>("sort-method").build()
-                    ]);
+            static PROPERTIES: Lazy<Vec<ParamSpec>> = Lazy::new(|| {
+                vec![
+                    ParamSpecBoolean::builder("hidden")
+                        .default_value(false)
+                        .build(),
+                    ParamSpecEnum::builder::<SortMethod>("sort-method").build(),
+                ]
+            });
             PROPERTIES.as_ref()
         }
-    
+
         fn set_property(&self, _id: usize, value: &Value, pspec: &ParamSpec) {
             match pspec.name() {
                 "hidden" => {
                     let hidden = value.get().expect("The value needs to be of type `bool`.");
                     self.hidden.replace(hidden);
-                },
+                }
                 "sort-method" => {
                     let sort_method = value.get().expect("The value needs to be of type `enum`.");
                     self.sort_method.replace(sort_method);
@@ -100,7 +103,7 @@ mod imp {
                 _ => unimplemented!(),
             }
         }
-    
+
         fn property(&self, _id: usize, pspec: &ParamSpec) -> Value {
             match pspec.name() {
                 "hidden" => self.hidden.get().to_value(),
@@ -111,16 +114,13 @@ mod imp {
 
         fn signals() -> &'static [Signal] {
             static SIGNALS: Lazy<Vec<Signal>> = Lazy::new(|| {
-                vec![
-                    Signal::builder("artist-selected")
-                        .param_types([<i64>::static_type()])
-                        .build()
-                    ]
+                vec![Signal::builder("artist-selected")
+                    .param_types([<i64>::static_type()])
+                    .build()]
             });
 
             SIGNALS.as_ref()
         }
-
     }
 
     impl WidgetImpl for ArtistGridPagePriv {}
@@ -142,20 +142,20 @@ impl ArtistGridPage {
     pub fn initialize(&self) {
         let imp = self.imp();
 
-        model().connect_local("refresh-artists", false, 
-        clone!(@weak self as this => @default-return None, move |_args| {
+        model().connect_local(
+            "refresh-artists",
+            false,
+            clone!(@weak self as this => @default-return None, move |_args| {
                 this.update_view();
                 None
-            })
+            }),
         );
 
-        
         let list_store = gio::ListStore::new(Artist::static_type());
         let filter = FuzzyFilter::new(SearchSortObject::Artist);
         let filter_model = gtk::FilterListModel::new(None::<gio::ListStore>, None::<FuzzyFilter>);
         filter_model.set_model(Some(&list_store));
         filter_model.set_filter(Some(&filter));
-        
 
         let sorter = FuzzySorter::new(SearchSortObject::Artist);
         let sorter_model = gtk::SortListModel::new(None::<gio::ListStore>, None::<FuzzySorter>);
@@ -227,7 +227,8 @@ impl ArtistGridPage {
             }),  
         );
 
-        self.connect_notify_local(Some("sort-method"),
+        self.connect_notify_local(
+            Some("sort-method"),
             clone!(@strong self as this => move |_, _| {
                 let imp = this.imp();
                 let sort_method = imp.sort_method.get();
@@ -282,7 +283,8 @@ impl ArtistGridPage {
 
     pub fn on_toggle_search_button(&self) {
         let imp = self.imp();
-        imp.search_bar.set_search_mode(!imp.search_bar.is_search_mode());
+        imp.search_bar
+            .set_search_mode(!imp.search_bar.is_search_mode());
         if !imp.search_bar.is_search_mode() {
             imp.search_bar.grab_focus();
         }
@@ -296,4 +298,3 @@ impl ArtistGridPage {
         self.imp().list_store.borrow().clone().unwrap().clone()
     }
 }
-    

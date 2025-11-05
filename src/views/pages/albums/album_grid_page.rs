@@ -4,28 +4,33 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-use gtk::{self, glib::{self, clone}, gio::{self, ListStore}};
 use adw::{prelude::*, subclass::prelude::*};
+use gtk::{
+    self,
+    gio::{self, ListStore},
+    glib::{self, clone},
+};
 
-use std::{cell::{RefCell, Cell}, rc::Rc};
-use std::time::Duration;
 use log::debug;
+use std::time::Duration;
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
 
 use crate::model::album::Album;
-use crate::search::{FuzzyFilter, SearchSortObject, SearchMethod};
+use crate::search::{FuzzyFilter, SearchMethod, SearchSortObject};
 use crate::sort::{FuzzySorter, SortMethod};
 use crate::util::model;
 
-use super::album_sidebar::AlbumFlap;
 use super::album_grid_child::AlbumGridChild;
+use super::album_sidebar::AlbumFlap;
 
 mod imp {
     use super::*;
-    use gtk::CompositeTemplate;
     use glib::subclass::Signal;
-    use glib::{
-        Value, ParamSpec, ParamSpecBoolean, ParamSpecEnum
-    };
+    use glib::{ParamSpec, ParamSpecBoolean, ParamSpecEnum, Value};
+    use gtk::CompositeTemplate;
     use once_cell::sync::Lazy;
 
     #[derive(Debug, Default, CompositeTemplate)]
@@ -51,7 +56,7 @@ mod imp {
 
         #[template_child(id = "scrolled_window")]
         pub scrolled_window: TemplateChild<gtk::ScrolledWindow>,
-        
+
         #[template_child(id = "drop_down")]
         pub drop_down: TemplateChild<gtk::DropDown>,
 
@@ -82,7 +87,6 @@ mod imp {
         fn instance_init(obj: &glib::subclass::InitializingObject<Self>) {
             obj.init_template();
         }
-
     }
 
     impl ObjectImpl for AlbumGridPagePriv {
@@ -92,31 +96,38 @@ mod imp {
         }
 
         fn properties() -> &'static [ParamSpec] {
-            static PROPERTIES: Lazy<Vec<ParamSpec>> =
-                Lazy::new(|| vec![
-                    ParamSpecBoolean::builder("hidden").default_value(false).build(),
-                    ParamSpecBoolean::builder("disable-flap").default_value(false).build(),
-                    ParamSpecBoolean::builder("display-labels-default").default_value(false).build(),
-                    ParamSpecEnum::builder::<SortMethod>("sort-method").build()
-                    ]
-                );
+            static PROPERTIES: Lazy<Vec<ParamSpec>> = Lazy::new(|| {
+                vec![
+                    ParamSpecBoolean::builder("hidden")
+                        .default_value(false)
+                        .build(),
+                    ParamSpecBoolean::builder("disable-flap")
+                        .default_value(false)
+                        .build(),
+                    ParamSpecBoolean::builder("display-labels-default")
+                        .default_value(false)
+                        .build(),
+                    ParamSpecEnum::builder::<SortMethod>("sort-method").build(),
+                ]
+            });
             PROPERTIES.as_ref()
         }
-    
+
         fn set_property(&self, _id: usize, value: &Value, pspec: &ParamSpec) {
             match pspec.name() {
                 "hidden" => {
                     let hidden = value.get().expect("The value needs to be of type `bool`.");
                     self.hidden.replace(hidden);
-                },
+                }
                 "disable-flap" => {
                     let disable_flap = value.get().expect("The value needs to be of type `bool`.");
                     self.disable_flap.replace(disable_flap);
-                },
+                }
                 "display-labels-default" => {
-                    let display_labels_default = value.get().expect("The value needs to be of type `bool`.");
+                    let display_labels_default =
+                        value.get().expect("The value needs to be of type `bool`.");
                     self.display_labels_default.replace(display_labels_default);
-                },
+                }
                 "sort-method" => {
                     let sort_method = value.get().expect("The value needs to be of type `enum`.");
                     self.sort_method.replace(sort_method);
@@ -124,7 +135,7 @@ mod imp {
                 _ => unimplemented!(),
             }
         }
-    
+
         fn property(&self, _id: usize, pspec: &ParamSpec) -> Value {
             match pspec.name() {
                 "hidden" => self.hidden.get().to_value(),
@@ -137,11 +148,9 @@ mod imp {
 
         fn signals() -> &'static [Signal] {
             static SIGNALS: Lazy<Vec<Signal>> = Lazy::new(|| {
-                vec![
-                    Signal::builder("album-selected")
-                        .param_types([<i64>::static_type()])
-                        .build(),
-                ]
+                vec![Signal::builder("album-selected")
+                    .param_types([<i64>::static_type()])
+                    .build()]
             });
 
             SIGNALS.as_ref()
@@ -175,7 +184,7 @@ impl AlbumGridPage {
         self.connect_signals();
 
         let list_store = gio::ListStore::new(Album::static_type());
-        
+
         let filter = FuzzyFilter::new(SearchSortObject::Album);
         let filter_model = gtk::FilterListModel::new(None::<gio::ListStore>, None::<FuzzyFilter>);
         filter_model.set_model(Some(&list_store));
@@ -187,7 +196,7 @@ impl AlbumGridPage {
         sorter_model.set_sorter(Some(&sorter));
 
         let selection = gtk::NoSelection::new(Some(sorter_model));
-        
+
         imp.flow_box.bind_model(Some(&selection), 
         clone!(@strong self as this => @default-panic, move |obj| {
                 let album = obj.clone().downcast::<Album>().expect("Album is of wrong type");
@@ -257,11 +266,8 @@ impl AlbumGridPage {
             }),  
         );
 
-
-
-
-
-        imp.drop_down.connect_notify_local(Some("selected"),
+        imp.drop_down.connect_notify_local(
+            Some("selected"),
             clone!(@strong self as this => move |_, _| {
                 let imp = this.imp();
                 let selected = imp.drop_down.selected();
@@ -280,7 +286,8 @@ impl AlbumGridPage {
             }),
         );
 
-        self.connect_notify_local(Some("sort-method"),
+        self.connect_notify_local(
+            Some("sort-method"),
             clone!(@strong self as this => move |_, _| {
                 let imp = this.imp();
                 let sort_method = imp.sort_method.get();
@@ -292,24 +299,27 @@ impl AlbumGridPage {
 
         imp.filter.replace(Some(filter));
         imp.sorter.replace(Some(sorter));
-        
     }
 
     fn connect_signals(&self) {
         let imp = self.imp();
 
-        model().connect_local("refresh-albums", false, 
-        clone!(@weak self as this => @default-return None, move |_args| {
+        model().connect_local(
+            "refresh-albums",
+            false,
+            clone!(@weak self as this => @default-return None, move |_args| {
                 this.update_view();
                 None
-            })
+            }),
         );
 
-        imp.album_sidebar.connect_local("back", false, 
-        clone!(@strong self as this => @default-return None, move |_| {
+        imp.album_sidebar.connect_local(
+            "back",
+            false,
+            clone!(@strong self as this => @default-return None, move |_| {
                 this.imp().adwflap.set_reveal_flap(false);
                 None
-            })
+            }),
         );
 
         imp.scrolled_window.vadjustment().connect_notify_local(
@@ -359,11 +369,11 @@ impl AlbumGridPage {
 
     pub fn on_toggle_search_button(&self) {
         let imp = self.imp();
-        imp.search_bar.set_search_mode(!imp.search_bar.is_search_mode());
+        imp.search_bar
+            .set_search_mode(!imp.search_bar.is_search_mode());
         if !imp.search_bar.is_search_mode() {
             imp.search_bar.grab_focus();
         }
-        
     }
 
     pub fn sort_menu(&self) -> &gio::Menu {
@@ -378,4 +388,3 @@ impl AlbumGridPage {
         self.imp().list_store.borrow().clone().unwrap().clone()
     }
 }
-    

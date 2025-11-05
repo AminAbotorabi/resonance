@@ -2,26 +2,28 @@
  *
  * SPDX-FileCopyrightText: 2023 nate-xyz
  * SPDX-License-Identifier: GPL-3.0-or-later
- * 
+ *
  * Thanks to 2022 Emmanuele Bassi (amberol)
- * 
+ *
  */
 
-use gtk::{glib, glib::{clone, Sender, Receiver}};
+use gtk::{
+    glib,
+    glib::{clone, Receiver, Sender},
+};
 use gtk_macros::send;
 
-use std::{cell::RefCell, rc::Rc, sync::Arc, time::Duration};
 use log::{debug, error};
+use std::{cell::RefCell, rc::Rc, sync::Arc, time::Duration};
 
 use mpris_player::{LoopStatus, Metadata, MprisPlayer, PlaybackStatus};
 
 use crate::model::track::Track;
 use crate::web::music_brainz::MusicBrainzAction;
 
-use super::player::PlaybackAction;
 use super::gst_backend::BackendPlaybackState;
+use super::player::PlaybackAction;
 use super::queue::RepeatMode;
-
 
 #[derive(Debug)]
 pub struct MprisController {
@@ -33,7 +35,11 @@ pub struct MprisController {
 }
 
 impl MprisController {
-    pub fn new(sender: Sender<PlaybackAction>, mb_sender: Sender<MusicBrainzAction>, mb_receiver: Receiver<(i64, String)>) -> Rc<Self> {
+    pub fn new(
+        sender: Sender<PlaybackAction>,
+        mb_sender: Sender<MusicBrainzAction>,
+        mb_receiver: Receiver<(i64, String)>,
+    ) -> Rc<Self> {
         let mpris = MprisPlayer::new(
             "io.github.nate_xyz.Resonance".to_string(),
             "Resonance".to_string(),
@@ -78,62 +84,56 @@ impl MprisController {
             }),
         );
 
-
-        self.mpris.connect_play(
-            clone!(@strong self.sender as sender => move || {
+        self.mpris
+            .connect_play(clone!(@strong self.sender as sender => move || {
                 send!(sender, PlaybackAction::TogglePlayPause);
-            })
-        );
+            }));
 
-        self.mpris.connect_stop(
-            clone!(@strong self.sender as sender => move || {
+        self.mpris
+            .connect_stop(clone!(@strong self.sender as sender => move || {
                 send!(sender, PlaybackAction::Stop);
-            })
-        );
+            }));
 
-        self.mpris.connect_pause(
-            clone!(@strong self.sender as sender => move || {
+        self.mpris
+            .connect_pause(clone!(@strong self.sender as sender => move || {
                 send!(sender, PlaybackAction::Pause);
-            })
-        );
+            }));
 
-        self.mpris.connect_previous(
-            clone!(@strong self.sender as sender => move || {
+        self.mpris
+            .connect_previous(clone!(@strong self.sender as sender => move || {
                 send!(sender, PlaybackAction::SkipPrevious);
-            })
-        );
+            }));
 
-        self.mpris.connect_next(
-            clone!(@strong self.sender as sender => move || {
+        self.mpris
+            .connect_next(clone!(@strong self.sender as sender => move || {
                 send!(sender, PlaybackAction::SkipNext);
             }));
 
-        self.mpris.connect_raise(
-            clone!(@strong self.sender as sender => move || {
+        self.mpris
+            .connect_raise(clone!(@strong self.sender as sender => move || {
                 send!(sender, PlaybackAction::Raise);
-            })
-        );
+            }));
 
-        self.mpris.connect_loop_status(clone!(@strong self.sender as sender => move |status| {
+        self.mpris
+            .connect_loop_status(clone!(@strong self.sender as sender => move |status| {
                 let mode = match status {
                     LoopStatus::None => RepeatMode::Normal,
                     LoopStatus::Track => RepeatMode::LoopSong,
                     LoopStatus::Playlist => RepeatMode::Loop,
                 };
                 send!(sender, PlaybackAction::QueueRepeatMode(mode));
-            })
-        );
+            }));
 
-        self.mpris.connect_seek(clone!(@strong self.sender as sender => move |position| {
+        self.mpris
+            .connect_seek(clone!(@strong self.sender as sender => move |position| {
                 let pos = Duration::from_micros(position as u64).as_secs();
                 send!(sender, PlaybackAction::Seek(pos));
-            })
-        );
+            }));
 
-        self.mpris.connect_volume(clone!(@strong self.sender as sender => move |volume| {
+        self.mpris
+            .connect_volume(clone!(@strong self.sender as sender => move |volume| {
                 debug!("mpris set volume {}", volume);
-            })
-        );
+            }));
     }
 
     fn update_metadata(&self) {
@@ -151,8 +151,11 @@ impl MprisController {
             //let length = Duration::from_secs().as_micros() as i64;
             self.mpris.set_metadata(metadata);
             self.current_track.replace(Some(track.clone()));
-            send!(self.mb_sender, MusicBrainzAction::FindRelease((true, track)));
-        }        
+            send!(
+                self.mb_sender,
+                MusicBrainzAction::FindRelease((true, track))
+            );
+        }
     }
 
     fn receive_id(&self, album_id: i64, art_url: String) -> glib::Continue {
@@ -173,12 +176,13 @@ impl MprisController {
         glib::Continue(true)
     }
 
-
     pub fn set_playback_state(&self, state: &BackendPlaybackState) {
         self.mpris.set_can_play(true);
 
         match state {
-            BackendPlaybackState::Playing => self.mpris.set_playback_status(PlaybackStatus::Playing),
+            BackendPlaybackState::Playing => {
+                self.mpris.set_playback_status(PlaybackStatus::Playing)
+            }
             BackendPlaybackState::Paused => self.mpris.set_playback_status(PlaybackStatus::Paused),
             _ => self.mpris.set_playback_status(PlaybackStatus::Stopped),
         };

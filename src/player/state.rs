@@ -2,15 +2,15 @@
  *
  * SPDX-FileCopyrightText: 2023 nate-xyz
  * SPDX-License-Identifier: GPL-3.0-or-later
- * 
+ *
  * Thanks to 2022 Emmanuele Bassi (amberol)
- * 
+ *
  */
 
- use gtk::{glib, prelude::*, subclass::prelude::*};
+use gtk::{glib, prelude::*, subclass::prelude::*};
 
-use std::{cell::Cell, cell::RefCell, rc::Rc};
 use log::debug;
+use std::{cell::Cell, cell::RefCell, rc::Rc};
 
 use crate::model::track::Track;
 
@@ -21,11 +21,10 @@ mod imp {
     use super::*;
     use glib::subclass::Signal;
     use glib::{
-        ParamSpec, ParamSpecBoolean, ParamSpecDouble, ParamSpecEnum, ParamSpecObject,
-        ParamSpecString, ParamSpecFloat, ParamSpecUInt64,
+        ParamSpec, ParamSpecBoolean, ParamSpecDouble, ParamSpecEnum, ParamSpecFloat,
+        ParamSpecObject, ParamSpecString, ParamSpecUInt64,
     };
     use once_cell::sync::Lazy;
-
 
     #[derive(Debug)]
     pub struct PlayerState {
@@ -63,19 +62,68 @@ mod imp {
         fn properties() -> &'static [ParamSpec] {
             static PROPERTIES: Lazy<Vec<ParamSpec>> = Lazy::new(|| {
                 vec![
-                    ParamSpecBoolean::builder("playing").read_only().explicit_notify().build(),
-                    ParamSpecUInt64::builder("position").minimum(0).maximum(u64::MAX).read_only().explicit_notify().build(),
-                    ParamSpecObject::builder::<Track>("song").read_only().explicit_notify().build(),
-                    ParamSpecString::builder("title").read_only().explicit_notify().build(),
-                    ParamSpecString::builder("artist").read_only().explicit_notify().build(),
-                    ParamSpecString::builder("album").read_only().explicit_notify().build(),
-                    ParamSpecUInt64::builder("duration").minimum(0).maximum(u64::MAX).default_value(0).read_only().explicit_notify().build(),
-                    ParamSpecUInt64::builder("cover").minimum(0).maximum(u64::MAX).default_value(0).read_only().explicit_notify().build(),
-                    ParamSpecDouble::builder("volume").minimum(0.0).maximum(1.0).default_value(1.0).read_only().explicit_notify().build(),
-                    ParamSpecEnum::builder::<BackendPlaybackState>("state").read_only().explicit_notify().build(),
-                    ParamSpecEnum::builder::<RepeatMode>("repeat-mode").read_only().explicit_notify().build(),
-                    ParamSpecString::builder("queue-title").read_only().explicit_notify().build(),
-                    ParamSpecFloat::builder("queue-time-remaining").read_only().build(),
+                    ParamSpecBoolean::builder("playing")
+                        .read_only()
+                        .explicit_notify()
+                        .build(),
+                    ParamSpecUInt64::builder("position")
+                        .minimum(0)
+                        .maximum(u64::MAX)
+                        .read_only()
+                        .explicit_notify()
+                        .build(),
+                    ParamSpecObject::builder::<Track>("song")
+                        .read_only()
+                        .explicit_notify()
+                        .build(),
+                    ParamSpecString::builder("title")
+                        .read_only()
+                        .explicit_notify()
+                        .build(),
+                    ParamSpecString::builder("artist")
+                        .read_only()
+                        .explicit_notify()
+                        .build(),
+                    ParamSpecString::builder("album")
+                        .read_only()
+                        .explicit_notify()
+                        .build(),
+                    ParamSpecUInt64::builder("duration")
+                        .minimum(0)
+                        .maximum(u64::MAX)
+                        .default_value(0)
+                        .read_only()
+                        .explicit_notify()
+                        .build(),
+                    ParamSpecUInt64::builder("cover")
+                        .minimum(0)
+                        .maximum(u64::MAX)
+                        .default_value(0)
+                        .read_only()
+                        .explicit_notify()
+                        .build(),
+                    ParamSpecDouble::builder("volume")
+                        .minimum(0.0)
+                        .maximum(1.0)
+                        .default_value(1.0)
+                        .read_only()
+                        .explicit_notify()
+                        .build(),
+                    ParamSpecEnum::builder::<BackendPlaybackState>("state")
+                        .read_only()
+                        .explicit_notify()
+                        .build(),
+                    ParamSpecEnum::builder::<RepeatMode>("repeat-mode")
+                        .read_only()
+                        .explicit_notify()
+                        .build(),
+                    ParamSpecString::builder("queue-title")
+                        .read_only()
+                        .explicit_notify()
+                        .build(),
+                    ParamSpecFloat::builder("queue-time-remaining")
+                        .read_only()
+                        .build(),
                 ]
             });
             PROPERTIES.as_ref()
@@ -283,7 +331,6 @@ impl PlayerState {
         self.notify("repeat-mode");
     }
 
-
     fn set_empty(&self, empty: bool) {
         self.imp().empty.set(empty)
     }
@@ -294,15 +341,11 @@ impl PlayerState {
 
     pub fn set_queue_title(&self, title: Option<String>) {
         let imp = self.imp();
-        
+
         let queue_title = self.queue_title();
         let new_title: String = match title {
-            Some(new_tile) => {
-                new_tile
-            },
-            None => {
-                "Playlist".to_string()
-            },
+            Some(new_tile) => new_tile,
+            None => "Playlist".to_string(),
         };
 
         if queue_title != new_title {
@@ -315,15 +358,12 @@ impl PlayerState {
         self.imp().queue_title.borrow().clone()
     }
 
-
     pub fn set_queue_time_remaining(&self, time: f64) {
         self.imp().queue_time_remaining.set(time);
         self.notify("queue-time-remaining");
     }
 
-
     pub fn queue_time_remaining(&self) -> f32 {
         self.imp().queue_time_remaining.get() as f32
     }
-
 }

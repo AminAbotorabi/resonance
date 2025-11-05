@@ -7,24 +7,27 @@
 use adw::prelude::*;
 
 use gst::prelude::ObjectExt;
-use gtk::{glib, glib::{clone, Receiver, Sender}};
+use gtk::{
+    glib,
+    glib::{clone, Receiver, Sender},
+};
 use gtk_macros::send;
 
-use std::{cell::Cell, cell::RefCell, rc::Rc};
 use log::{debug, error};
+use std::{cell::Cell, cell::RefCell, rc::Rc};
 
 use crate::model::track::Track;
-use crate::web::{
-    music_brainz::ResonanceMusicBrainz,
-    discord::{ResonanceDiscord, DiscordAction},
-    last_fm::{ResonanceLastFM, LastFmAction},
-};
 use crate::util::{database, settings_manager};
+use crate::web::{
+    discord::{DiscordAction, ResonanceDiscord},
+    last_fm::{LastFmAction, ResonanceLastFM},
+    music_brainz::ResonanceMusicBrainz,
+};
 
-use super::gst_backend::{GstPlayer, BackendPlaybackState};
+use super::gst_backend::{BackendPlaybackState, GstPlayer};
+use super::mpris_controller::MprisController;
 use super::queue::{Queue, QueueAction, RepeatMode};
 use super::state::PlayerState;
-use super::mpris_controller::MprisController;
 
 #[derive(Clone, Debug)]
 pub enum PlaybackAction {
@@ -42,7 +45,6 @@ pub enum PlaybackAction {
     Seek(u64),
     QueueRepeatMode(RepeatMode),
 }
-
 
 #[derive(Debug)]
 pub struct Player {
@@ -74,12 +76,14 @@ impl Player {
 
         let (sender_mb_mpris, rec_mb_mpris) = glib::MainContext::channel(glib::PRIORITY_LOW);
         let (sender_mb_discord, rec_mb_discord) = glib::MainContext::channel(glib::PRIORITY_LOW);
-        
-        let (music_brainz_sender, music_brainz_receiver) = glib::MainContext::channel(glib::PRIORITY_LOW);
 
-        let music_brainz = ResonanceMusicBrainz::new(music_brainz_receiver, sender_mb_mpris, sender_mb_discord);
+        let (music_brainz_sender, music_brainz_receiver) =
+            glib::MainContext::channel(glib::PRIORITY_LOW);
+
+        let music_brainz =
+            ResonanceMusicBrainz::new(music_brainz_receiver, sender_mb_mpris, sender_mb_discord);
         let state = PlayerState::default();
-        let backend =  GstPlayer::new(sender.clone());
+        let backend = GstPlayer::new(sender.clone());
         let mpris = MprisController::new(sender.clone(), music_brainz_sender.clone(), rec_mb_mpris);
         let (discord_sender, discord_receiver) = glib::MainContext::channel(glib::PRIORITY_LOW);
         let discord = ResonanceDiscord::new(discord_receiver, music_brainz_sender, rec_mb_discord);
@@ -105,7 +109,7 @@ impl Player {
             lastfm_sender,
             crossfade_enabled: Cell::new(false),
         };
-        
+
         let player = Rc::new(p);
         player.clone().setup();
         player
@@ -120,11 +124,33 @@ impl Player {
     fn connect_settings(self: Rc<Self>) {
         let settings = settings_manager();
 
-        self.discord_enabled.set(settings.boolean("discord-rich-presence"));
+        self.discord_enabled
+            .set(settings.boolean("discord-rich-presence"));
         self.lastfm_enabled.set(settings.boolean("last-fm-enabled"));
-        self.commit_threshold.set(settings.double("play-commit-threshold"));
-        self.crossfade_enabled.set(settings.boolean("crossfade-enabled"));
-        self.backend.set_crossfade_duration(settings.double("crossfade-duration"));
+        self.commit_threshold
+            .set(settings.double("play-commit-threshold"));
+        self.crossfade_enabled
+            .set(settings.boolean("crossfade-enabled"));
+        self.backend
+            .set_crossfade_duration(settings.double("crossfade-duration"));
+
+        settings.connect_changed(
+            Some("crossfade-enabled"),
+            clone!(@weak self as this => move |settings, _key| {
+                let enabled = settings.boolean("crossfade-enabled");
+                this.crossfade_enabled.set(enabled);
+                debug!("Crossfade enabled setting changed to: {}", enabled);
+            }),
+        );
+
+        settings.connect_changed(
+            Some("crossfade-duration"),
+            clone!(@weak self as this => move |settings, _key| {
+                let duration = settings.double("crossfade-duration");
+                this.backend.set_crossfade_duration(duration);
+                debug!("Crossfade duration setting changed to: {}", duration);
+            }),
+        );
     }
 
     fn setup_channels(self: Rc<Self>) {
@@ -175,7 +201,6 @@ impl Player {
         );
     }
 
-
     fn process_playback_action(&self, action: PlaybackAction) -> glib::Continue {
         match action {
             PlaybackAction::Play => self.play(),
@@ -186,7 +211,9 @@ impl Player {
             PlaybackAction::EOS => self.next(),
             PlaybackAction::Error => error!("Player error"),
             PlaybackAction::PlaybackState(state) => self.set_state_state(state),
-            PlaybackAction::QueueRepeatMode(mode) => {_ = self.process_queue_action(QueueAction::QueueRepeatMode(mode))},
+            PlaybackAction::QueueRepeatMode(mode) => {
+                _ = self.process_queue_action(QueueAction::QueueRepeatMode(mode))
+            }
             PlaybackAction::SkipPrevious => self.prev(),
             PlaybackAction::SkipNext => self.next(),
             PlaybackAction::Raise => debug!("raise"),
@@ -203,26 +230,26 @@ impl Player {
             QueueAction::QueueUpdate => {
                 debug!("player QueueUpdate");
                 state.queue_update();
-            },
+            }
             QueueAction::QueueEmpty => {
                 debug!("player QueueEmpty");
                 self.stop();
                 state.queue_empty();
                 send!(self.discord_sender, DiscordAction::Clear);
-            },
+            }
             QueueAction::QueueNonEmpty => {
                 debug!("player QueueNonEmpty");
                 state.queue_nonempty();
-            },
+            }
             QueueAction::QueuePositionUpdate(pos) => {
                 state.queue_position_update(pos);
-            },
+            }
             QueueAction::QueueRepeatMode(mode) => {
                 state.queue_repeat_mode_update(mode);
-            },
+            }
             QueueAction::QueueDuration(duration) => {
                 state.set_queue_time_remaining(duration);
-            },
+            }
             _ => debug!("Received action {:?}", action),
         }
         glib::Continue(true)
@@ -232,7 +259,7 @@ impl Player {
         match self.backend.pipeline_position() {
             Some(p) => {
                 self.state.set_position(p);
-            },
+            }
             None => {
                 self.state.set_position(tick);
             }
@@ -247,7 +274,8 @@ impl Player {
         if self.crossfade_enabled.get() && self.backend.should_start_crossfade() {
             if let Some(next_track) = self.queue().peek_next() {
                 debug!("Triggering crossfade to next track");
-                self.backend.start_crossfade(next_track.uri());
+                self.set_current_track(Some(next_track.clone()));
+                self.backend.clone().start_crossfade(next_track.uri());
                 // Pre-advance the queue position so the UI updates
                 self.queue().advance_for_crossfade();
             }
@@ -295,7 +323,7 @@ impl Player {
             self.backend.set_uri(track.uri());
             self.backend.set_state(BackendPlaybackState::Playing);
             self.set_current_track(Some(track.clone()));
-        } else  {
+        } else {
             self.stop();
         }
     }
@@ -346,7 +374,7 @@ impl Player {
 
     pub fn set_track_position(&self, position_second: f64) {
         //debug!("player set_track_position");
-        let mut seek_second = position_second; 
+        let mut seek_second = position_second;
         if position_second < 0.0 {
             seek_second = 0.0;
         }
@@ -356,7 +384,7 @@ impl Player {
                 if seek_second <= d {
                     self.backend.seek(seek_second as u64);
                 }
-            },
+            }
             None => {
                 let d = self.state().current_track().unwrap().duration();
                 if seek_second <= d {
@@ -367,7 +395,6 @@ impl Player {
 
         send!(self.discord_sender, DiscordAction::Seek(position_second));
     }
-
 
     fn record_play(&self) {
         if let Some(track) = self.state().current_track() {
@@ -428,7 +455,7 @@ impl Player {
         let queue = self.queue();
         queue.track_ids()
     }
-    
+
     pub fn lastfm(&self) -> &ResonanceLastFM {
         &self.lastfm
     }
@@ -449,4 +476,3 @@ impl Player {
         &self.queue
     }
 }
-    

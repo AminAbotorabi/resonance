@@ -7,21 +7,18 @@
 use adw::{prelude::*, subclass::prelude::*};
 use gtk::{glib, glib::clone, CompositeTemplate};
 
-use std::{cell::RefCell, rc::Rc};
-use std::collections::HashMap;
 use log::{debug, error};
+use std::collections::HashMap;
+use std::{cell::RefCell, rc::Rc};
 
-use crate::model::{
-    album::Album,
-    track::Track,
-};
+use crate::model::{album::Album, track::Track};
 
+use crate::util::{model, player};
 use crate::views::{
-    art::{rounded_album_art::RoundedAlbumArt, placeholder_art::PlaceHolderArt},
+    art::{placeholder_art::PlaceHolderArt, rounded_album_art::RoundedAlbumArt},
     disc_button::DiscButton,
     track_entry::TrackEntry,
 };
-use crate::util::{model, player};
 
 mod imp {
     use super::*;
@@ -88,7 +85,6 @@ mod imp {
         pub album: RefCell<Option<Rc<Album>>>,
         // pub model: RefCell<Option<Rc<Model>>>,
         // pub player: RefCell<Option<Rc<Player>>>,
-
     }
 
     #[glib::object_subclass]
@@ -152,23 +148,29 @@ impl AlbumFlap {
         let imp = self.imp();
 
         //imp.popover.set_parent(self);
-        
-        imp.back_button.connect_clicked(clone!(@strong self as this => @default-panic, move |_button| {
+
+        imp.back_button.connect_clicked(
+            clone!(@strong self as this => @default-panic, move |_button| {
                 this.emit_by_name::<()>("back", &[]);
             }),
         );
 
-        imp.play_button.connect_clicked(clone!(@strong self as this => @default-panic, move |_button| {
-            let album = this.album();
-            player().clear_play_album(album.tracks(), Some(album.title()));
-        }));
+        imp.play_button.connect_clicked(
+            clone!(@strong self as this => @default-panic, move |_button| {
+                let album = this.album();
+                player().clear_play_album(album.tracks(), Some(album.title()));
+            }),
+        );
 
-        imp.add_button.connect_clicked(clone!(@strong self as this => @default-panic, move |_button| {
-            let tracks = this.album().tracks();
-            player().add_album(tracks);
-        }));
+        imp.add_button.connect_clicked(
+            clone!(@strong self as this => @default-panic, move |_button| {
+                let tracks = this.album().tracks();
+                player().add_album(tracks);
+            }),
+        );
 
-        imp.info_button.connect_clicked(clone!(@strong self as this => @default-panic, move |_button| {
+        imp.info_button.connect_clicked(
+            clone!(@strong self as this => @default-panic, move |_button| {
                 this.emit_by_name::<()>("album-selected", &[&this.album_id()]);
                 this.emit_by_name::<()>("back", &[]);
             }),
@@ -178,14 +180,14 @@ impl AlbumFlap {
             clone!(@strong self as this => @default-panic, move |_button| {
                 let album = this.album();
                 player().clear_play_album(album.tracks(), Some(album.title()));
-            })
+            }),
         );
 
         imp.second_add_button.connect_clicked(
             clone!(@strong self as this => @default-panic, move |_button| {
                 let tracks = this.album().tracks();
                 player().add_album(tracks);
-            })
+            }),
         );
 
         imp.second_info_button.connect_clicked(
@@ -195,16 +197,12 @@ impl AlbumFlap {
         );
 
         let ctrl = gtk::EventControllerMotion::new();
-        ctrl.connect_enter(
-            clone!(@strong self as this => move |_controller, _x, _y| {
-                this.imp().overlay_box.show();
-            })
-        );
-        ctrl.connect_leave(
-            clone!(@strong self as this => move |_controller| {
-                this.imp().overlay_box.hide();
-            })
-        );
+        ctrl.connect_enter(clone!(@strong self as this => move |_controller, _x, _y| {
+            this.imp().overlay_box.show();
+        }));
+        ctrl.connect_leave(clone!(@strong self as this => move |_controller| {
+            this.imp().overlay_box.hide();
+        }));
         imp.art_and_info_box.add_controller(ctrl);
 
         // let ctrl = gtk::GestureClick::new();
@@ -261,7 +259,6 @@ impl AlbumFlap {
 
         match imp.album.borrow().as_ref() {
             Some(album) => {
-
                 debug!("album sidebar make track box");
 
                 imp.track_bin.set_child(gtk::Widget::NONE);
@@ -280,12 +277,18 @@ impl AlbumFlap {
 
                         track_box.append(&box_);
                     }
-                    
+
                     let mut album_vec: Vec<(&i64, &Rc<Track>)> = disc.iter().collect();
                     album_vec.sort_by(|a, b| a.0.cmp(b.0));
                     for (track_n, track) in album_vec {
                         let track = track.clone();
-                        let entry = TrackEntry::new(album.clone(), track, *track_n as i32, *disc_n as i32, 1000);
+                        let entry = TrackEntry::new(
+                            album.clone(),
+                            track,
+                            *track_n as i32,
+                            *disc_n as i32,
+                            1000,
+                        );
 
                         track_box.append(&entry);
                     }
@@ -323,7 +326,7 @@ impl AlbumFlap {
             None => {
                 imp.art_bin.set_child(gtk::Widget::NONE);
                 imp.track_bin.set_child(gtk::Widget::NONE);
-            },
+            }
         }
     }
 
@@ -343,12 +346,11 @@ impl AlbumFlap {
         };
     }
 
-    fn album(&self ) -> Rc<Album> {
+    fn album(&self) -> Rc<Album> {
         self.imp().album.borrow().as_ref().unwrap().clone()
     }
 
     pub fn album_id(&self) -> i64 {
         self.imp().album.borrow().as_ref().unwrap().id()
     }
-
 }

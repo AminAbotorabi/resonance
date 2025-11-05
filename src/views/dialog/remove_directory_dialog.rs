@@ -7,11 +7,15 @@
 use adw::prelude::*;
 use adw::subclass::prelude::*;
 
-use gtk::{glib, glib::{clone, Sender}, CompositeTemplate};
+use gtk::{
+    glib,
+    glib::{clone, Sender},
+    CompositeTemplate,
+};
 use gtk_macros::send;
 
-use std::cell::RefCell;
 use log::error;
+use std::cell::RefCell;
 
 use crate::database::DatabaseAction;
 use crate::util::database;
@@ -57,11 +61,7 @@ mod imp {
         }
 
         fn signals() -> &'static [Signal] {
-            static SIGNALS: Lazy<Vec<Signal>> = Lazy::new(|| {
-                vec![
-                    Signal::builder("done").build(),
-                ]
-            });
+            static SIGNALS: Lazy<Vec<Signal>> = Lazy::new(|| vec![Signal::builder("done").build()]);
 
             SIGNALS.as_ref()
         }
@@ -81,7 +81,8 @@ glib::wrapper! {
 
 impl RemoveDirectoryDialog {
     pub fn new(dir_to_remove: String) -> RemoveDirectoryDialog {
-        let dialog: RemoveDirectoryDialog = glib::Object::builder::<RemoveDirectoryDialog>().build();
+        let dialog: RemoveDirectoryDialog =
+            glib::Object::builder::<RemoveDirectoryDialog>().build();
         dialog.imp().directory.replace(dir_to_remove);
         dialog
     }
@@ -106,7 +107,10 @@ impl RemoveDirectoryDialog {
         }
 
         if response == "remove" {
-            send!(imp.db_sender, DatabaseAction::RemoveDirectory(dir_to_remove));
+            send!(
+                imp.db_sender,
+                DatabaseAction::RemoveDirectory(dir_to_remove)
+            );
             self.emit_by_name::<()>("done", &[]);
         }
     }

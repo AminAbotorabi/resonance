@@ -21,8 +21,7 @@ mod imp {
     use super::*;
 
     #[derive(Debug, Default)]
-    pub struct PlaceHolderGeneric  {
-    }
+    pub struct PlaceHolderGeneric {}
 
     #[glib::object_subclass]
     impl ObjectSubclass for PlaceHolderGeneric {
@@ -39,7 +38,6 @@ mod imp {
 
     impl WidgetImpl for PlaceHolderGeneric {}
     impl BinImpl for PlaceHolderGeneric {}
-
 }
 
 glib::wrapper! {
@@ -48,8 +46,13 @@ glib::wrapper! {
 }
 
 impl PlaceHolderGeneric {
-    pub fn new(name: String, icon_name: &str, size: i32, image_id: Option<i64>) -> PlaceHolderGeneric {
-        let object: PlaceHolderGeneric= glib::Object::builder::<PlaceHolderGeneric>().build();
+    pub fn new(
+        name: String,
+        icon_name: &str,
+        size: i32,
+        image_id: Option<i64>,
+    ) -> PlaceHolderGeneric {
+        let object: PlaceHolderGeneric = glib::Object::builder::<PlaceHolderGeneric>().build();
         object.construct(name, icon_name, size, image_id);
         object
     }
@@ -62,7 +65,7 @@ impl PlaceHolderGeneric {
                 if let Ok(pixbuf) = image.pixbuf() {
                     bg.load_art(pixbuf);
                     loaded = true;
-                }            
+                }
             }
         }
 
@@ -72,7 +75,7 @@ impl PlaceHolderGeneric {
         box_.set_valign(gtk::Align::Center);
         box_.set_halign(gtk::Align::Center);
 
-        let overlay = gtk::Overlay::new(); 
+        let overlay = gtk::Overlay::new();
 
         if !loaded {
             let icon = gtk::Image::from_icon_name(icon_name);
@@ -83,7 +86,7 @@ impl PlaceHolderGeneric {
             label.set_hexpand(true);
             label.set_justify(gtk::Justification::Center);
             label.set_wrap(true);
-            
+
             let text = name.as_str();
             let width = UnicodeWidthStr::width(text);
             let text = if width >= 61 {
@@ -92,21 +95,22 @@ impl PlaceHolderGeneric {
                 ellipsized
             } else {
                 name
-            };        
-            label.set_label(&format!("<span weight=\"book\" size=\"large\">{}</span>", html_escape::encode_text_minimal(&text)));
-    
+            };
+            label.set_label(&format!(
+                "<span weight=\"book\" size=\"large\">{}</span>",
+                html_escape::encode_text_minimal(&text)
+            ));
 
             box_.set_margin_top(12);
             box_.set_margin_end(12);
             box_.set_margin_start(12);
             box_.set_margin_bottom(12);
-            
+
             self.set_overflow(gtk::Overflow::Hidden);
-    
 
             box_.append(&icon);
             box_.append(&label);
-    
+
             overlay.add_overlay(&box_);
         }
         overlay.set_child(Some(&bg));

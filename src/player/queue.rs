@@ -4,12 +4,12 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-use gtk::{prelude::SettingsExt, glib, glib::Sender, gio};
+use gtk::{gio, glib, glib::Sender, prelude::SettingsExt};
 use gtk_macros::send;
 
-use std::{cell::Cell, cell::RefCell, rc::Rc};
+use log::{debug, error};
 use rand::{seq::SliceRandom, thread_rng};
-use log::{error, debug};
+use std::{cell::Cell, cell::RefCell, rc::Rc};
 
 use crate::model::track::Track;
 use crate::util::settings_manager;
@@ -31,7 +31,7 @@ pub enum RepeatMode {
     Normal,
     Loop,
     LoopSong,
-    Shuffle
+    Shuffle,
 }
 
 impl Default for RepeatMode {
@@ -112,7 +112,6 @@ impl Queue {
         send!(self.sender, QueueAction::QueueNonEmpty);
         send!(self.sender, QueueAction::QueueUpdate);
         self.current_song_update();
-
     }
 
     pub fn update_from_first(&self) {
@@ -124,11 +123,14 @@ impl Queue {
     }
 
     fn current_song_update(&self) {
-        let queue =  self.queue.borrow();
+        let queue = self.queue.borrow();
         let track = queue[self.current_position.get() as usize].clone();
-        
+
         self.current_track.replace(Some(track));
-        send!(self.sender, QueueAction::QueuePositionUpdate(self.position()));
+        send!(
+            self.sender,
+            QueueAction::QueuePositionUpdate(self.position())
+        );
         self.calculate_time_remaining();
     }
 
@@ -139,7 +141,9 @@ impl Queue {
     }
 
     pub fn add_tracks(&self, tracks: Vec<Rc<Track>>) {
-        self.sequential_queue.borrow_mut().append(tracks.clone().as_mut());
+        self.sequential_queue
+            .borrow_mut()
+            .append(tracks.clone().as_mut());
         self.queue.borrow_mut().append(tracks.clone().as_mut());
         self.current_song_update();
         if self.repeat_mode.get() == RepeatMode::Shuffle {
@@ -156,7 +160,6 @@ impl Queue {
             return;
         }
         if self.position() >= queue_length {
-           
             self.end_queue();
             //self.clear_queue();
             return;
@@ -167,7 +170,6 @@ impl Queue {
 
         self.current_position.set(position);
         self.current_song_update();
-
     }
 
     pub fn remove_track(&self, position_to_remove: usize) {
@@ -216,11 +218,11 @@ impl Queue {
         match mode {
             RepeatMode::Shuffle => {
                 self.shuffle_tracks();
-            },
+            }
             _ => {
                 debug!("Restoring queue from sequential");
                 self.queue.replace(self.sequential_queue.borrow().clone());
-            },
+            }
         }
 
         self.repeat_mode.set(mode);
@@ -246,7 +248,11 @@ impl Queue {
             debug!("Nothing left to shuffle");
             return;
         }
-        let mut remaining_songs: Vec<Rc<Track>> = self.queue.borrow_mut().drain((self.current_position.get()+1) as usize..).collect();
+        let mut remaining_songs: Vec<Rc<Track>> = self
+            .queue
+            .borrow_mut()
+            .drain((self.current_position.get() + 1) as usize..)
+            .collect();
         let mut rng = thread_rng();
         remaining_songs.shuffle(&mut rng);
         self.queue.borrow_mut().append(&mut remaining_songs);
@@ -265,31 +271,30 @@ impl Queue {
                 if position <= 0 {
                     self.current_position.set(0);
                 } else {
-                    self.current_position.set(position-1);
+                    self.current_position.set(position - 1);
                 }
                 self.current_song_update();
-
-            },
+            }
             RepeatMode::Loop => {
                 if position <= 0 {
-                    self.current_position.set(queue_length-1);
+                    self.current_position.set(queue_length - 1);
                 } else {
-                    self.current_position.set(position-1);
+                    self.current_position.set(position - 1);
                 }
                 self.current_song_update();
-            },
+            }
             RepeatMode::LoopSong => {
                 send!(self.sender, QueueAction::QueuePositionUpdate(position));
                 self.calculate_time_remaining();
-            },
+            }
             RepeatMode::Shuffle => {
                 if position <= 0 {
-                    self.current_position.set(queue_length-1);
+                    self.current_position.set(queue_length - 1);
                 } else {
-                    self.current_position.set(position-1);
+                    self.current_position.set(position - 1);
                 }
                 self.current_song_update();
-            },
+            }
         }
     }
 
@@ -300,8 +305,8 @@ impl Queue {
             return;
         }
         let queue_length = self.queue.borrow().len() as u64;
-        let position = self.current_position.get()+1;
-        
+        let position = self.current_position.get() + 1;
+
         match self.repeat_mode.get() {
             RepeatMode::Normal => {
                 if position >= queue_length {
@@ -313,7 +318,7 @@ impl Queue {
                     self.current_position.set(position);
                     self.current_song_update();
                 }
-            },
+            }
             RepeatMode::Loop => {
                 if position >= queue_length {
                     self.current_position.set(0);
@@ -321,11 +326,11 @@ impl Queue {
                     self.current_position.set(position);
                 }
                 self.current_song_update();
-            },
+            }
             RepeatMode::LoopSong => {
-                send!(self.sender, QueueAction::QueuePositionUpdate(position-1));
+                send!(self.sender, QueueAction::QueuePositionUpdate(position - 1));
                 self.calculate_time_remaining();
-            },
+            }
             RepeatMode::Shuffle => {
                 if self.shuffle_loop.get() {
                     if position >= queue_length {
@@ -337,14 +342,14 @@ impl Queue {
                     if position >= queue_length {
                         self.current_track.replace(None);
                         self.end_queue();
-                        
+
                         return;
                     } else {
                         self.current_position.set(position);
                     }
                 }
                 self.current_song_update();
-            },
+            }
         }
     }
 
@@ -407,7 +412,7 @@ impl Queue {
                 } else {
                     self.queue.borrow().get(next_position as usize).cloned()
                 }
-            },
+            }
             RepeatMode::Loop => {
                 let pos = if next_position >= queue_length {
                     0
@@ -415,10 +420,8 @@ impl Queue {
                     next_position
                 };
                 self.queue.borrow().get(pos as usize).cloned()
-            },
-            RepeatMode::LoopSong => {
-                self.current_track.borrow().clone()
-            },
+            }
+            RepeatMode::LoopSong => self.current_track.borrow().clone(),
             RepeatMode::Shuffle => {
                 if self.shuffle_loop.get() {
                     let pos = if next_position >= queue_length {
@@ -434,7 +437,7 @@ impl Queue {
                         self.queue.borrow().get(next_position as usize).cloned()
                     }
                 }
-            },
+            }
         }
     }
 
@@ -453,7 +456,7 @@ impl Queue {
                     self.current_position.set(next_position);
                     self.current_song_update();
                 }
-            },
+            }
             RepeatMode::Loop => {
                 let pos = if next_position >= queue_length {
                     0
@@ -462,11 +465,14 @@ impl Queue {
                 };
                 self.current_position.set(pos);
                 self.current_song_update();
-            },
+            }
             RepeatMode::LoopSong => {
                 // Don't advance for loop song
-                send!(self.sender, QueueAction::QueuePositionUpdate(self.current_position.get()));
-            },
+                send!(
+                    self.sender,
+                    QueueAction::QueuePositionUpdate(self.current_position.get())
+                );
+            }
             RepeatMode::Shuffle => {
                 if self.shuffle_loop.get() {
                     let pos = if next_position >= queue_length {
@@ -482,8 +488,7 @@ impl Queue {
                         self.current_song_update();
                     }
                 }
-            },
+            }
         }
     }
 }
-    

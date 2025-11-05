@@ -7,8 +7,8 @@
 use adw::subclass::prelude::*;
 use gtk::glib;
 
-use std::{cell::Cell, cell::RefCell, rc::Rc};
 use regex::Regex;
+use std::{cell::Cell, cell::RefCell, rc::Rc};
 
 use super::album::Album;
 
@@ -62,7 +62,7 @@ impl Genre {
 
         imp.name.replace(name);
     }
-    
+
     pub fn id(&self) -> i64 {
         self.imp().id.get().clone()
     }
@@ -81,13 +81,12 @@ impl Genre {
         if None == imp.albums.borrow().as_ref() {
             imp.albums.replace(Some(vec![album]));
             return;
-        } 
+        }
 
-        if let Some(albums)  = imp.albums.borrow_mut().as_mut() {
+        if let Some(albums) = imp.albums.borrow_mut().as_mut() {
             albums.push(album);
             return;
         }
-
     }
 
     pub fn albums(&self) -> Option<Vec<Rc<Album>>> {

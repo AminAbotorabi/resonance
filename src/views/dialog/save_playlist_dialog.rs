@@ -7,11 +7,15 @@
 use adw::prelude::*;
 use adw::subclass::prelude::*;
 
-use gtk::{glib, glib::{clone, Sender}, CompositeTemplate};
+use gtk::{
+    glib,
+    glib::{clone, Sender},
+    CompositeTemplate,
+};
 use gtk_macros::send;
 
-use std::cell::RefCell;
 use log::error;
+use std::cell::RefCell;
 
 use crate::database::DatabaseAction;
 use crate::i18n::i18n_k;
@@ -107,7 +111,10 @@ impl SavePlaylistDialog {
 
         match database().query_n_playlists(None) {
             Ok(count) => {
-                let name = i18n_k("Playlist #{new_playlist_number}", &[("new_playlist_number", &format!("{}", count+1))]);
+                let name = i18n_k(
+                    "Playlist #{new_playlist_number}",
+                    &[("new_playlist_number", &format!("{}", count + 1))],
+                );
                 self.reset_name(name);
             }
             Err(e) => error!("An error occurred: {}", e),
@@ -127,10 +134,17 @@ impl SavePlaylistDialog {
                 let mut playlist_title = imp.title_adw_entry.text().to_string();
                 if playlist_title == "" {
                     playlist_title = imp.name.borrow().clone();
-                } 
+                }
                 let playlist_desc = imp.desc_adw_entry.text().to_string();
 
-                send!(imp.db_sender, DatabaseAction::CreatePlaylist((playlist_title.clone(), playlist_desc, track_ids)));
+                send!(
+                    imp.db_sender,
+                    DatabaseAction::CreatePlaylist((
+                        playlist_title.clone(),
+                        playlist_desc,
+                        track_ids
+                    ))
+                );
             }
         }
     }

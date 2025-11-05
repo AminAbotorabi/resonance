@@ -7,25 +7,23 @@
 use adw::prelude::*;
 use adw::subclass::prelude::*;
 
-use gtk::{gio, gdk, glib, glib::clone, CompositeTemplate};
+use gtk::{gdk, gio, glib, glib::clone, CompositeTemplate};
 
-use std::{cell::Cell, cell::RefCell, rc::Rc};
 use log::{debug, error};
+use std::{cell::Cell, cell::RefCell, rc::Rc};
 
 use crate::model::track::Track;
-use crate::views::art::rounded_album_art::RoundedAlbumArt;
 use crate::util::{model, player};
+use crate::views::art::rounded_album_art::RoundedAlbumArt;
 
 use super::track_item::TrackItem;
 
 mod imp {
     use super::*;
     use glib::subclass::Signal;
-    use glib::{
-        Value, ParamSpec, ParamSpecBoolean
-    };
+    use glib::{ParamSpec, ParamSpecBoolean, Value};
     use once_cell::sync::Lazy;
-    
+
     #[derive(Debug, Default, CompositeTemplate)]
     #[template(resource = "/io/github/nate_xyz/Resonance/queue_sidebar_track_entry.ui")]
     pub struct QueueTrackPriv {
@@ -77,7 +75,6 @@ mod imp {
         fn instance_init(obj: &glib::subclass::InitializingObject<Self>) {
             obj.init_template();
         }
-
     }
 
     impl ObjectImpl for QueueTrackPriv {
@@ -87,11 +84,15 @@ mod imp {
         }
 
         fn properties() -> &'static [ParamSpec] {
-            static PROPERTIES: Lazy<Vec<ParamSpec>> =
-                Lazy::new(|| vec![ParamSpecBoolean::builder("edit-mode").default_value(false).explicit_notify().build()]);
+            static PROPERTIES: Lazy<Vec<ParamSpec>> = Lazy::new(|| {
+                vec![ParamSpecBoolean::builder("edit-mode")
+                    .default_value(false)
+                    .explicit_notify()
+                    .build()]
+            });
             PROPERTIES.as_ref()
         }
-    
+
         fn set_property(&self, _id: usize, value: &Value, pspec: &ParamSpec) {
             match pspec.name() {
                 "edit-mode" => {
@@ -102,7 +103,7 @@ mod imp {
                 _ => unimplemented!(),
             }
         }
-    
+
         fn property(&self, _id: usize, pspec: &ParamSpec) -> Value {
             match pspec.name() {
                 "edit-mode" => self.edit_mode.get().to_value(),
@@ -111,15 +112,11 @@ mod imp {
         }
 
         fn signals() -> &'static [Signal] {
-            static SIGNALS: Lazy<Vec<Signal>> = Lazy::new(|| {
-                vec![
-                    Signal::builder("example-signal").build(),
-                ]
-            });
+            static SIGNALS: Lazy<Vec<Signal>> =
+                Lazy::new(|| vec![Signal::builder("example-signal").build()]);
 
             SIGNALS.as_ref()
         }
-
     }
 
     impl WidgetImpl for QueueTrackPriv {}
@@ -132,7 +129,6 @@ glib::wrapper! {
     @extends gtk::Widget, gtk::ListBoxRow;
 }
 
-
 impl QueueTrack {
     pub fn new() -> QueueTrack {
         let queue_track: QueueTrack = glib::Object::builder::<QueueTrack>().build();
@@ -144,11 +140,10 @@ impl QueueTrack {
 
         imp.popover.set_parent(self);
 
-        imp.delete_button.connect_clicked(
-            clone!(@strong self as this => move |_button| {
+        imp.delete_button
+            .connect_clicked(clone!(@strong self as this => move |_button| {
                 player().queue().remove_track(this.playlist_position() as usize);
-            })
-        );
+            }));
 
         let ctrl = gtk::DragSource::builder()
             .actions(gdk::DragAction::MOVE)
@@ -202,10 +197,12 @@ impl QueueTrack {
             .actions(gdk::DragAction::MOVE)
             .build();
 
-        drop_target.connect_accept(clone!(@strong self as this => move |_drop_target, _drop_value| {
-                let imp = this.imp();
-                imp.edit_mode.get()
-        }));
+        drop_target.connect_accept(
+            clone!(@strong self as this => move |_drop_target, _drop_value| {
+                    let imp = this.imp();
+                    imp.edit_mode.get()
+            }),
+        );
 
         drop_target.connect_drop(
             clone!(@strong self as this => move |_drop_target, drop_value, _x, _y| {
@@ -228,10 +225,8 @@ impl QueueTrack {
             }),
         );
 
-
-
         self.add_controller(drop_target);
-        
+
         // let ctrl = gtk::GestureClick::new();
         // ctrl.connect_unpaired_release(
         //     clone!(@strong self as this => move |_gesture_click, _x, _y, button, _sequence| {
@@ -252,16 +247,17 @@ impl QueueTrack {
         self.update_view();
     }
 
-
     pub fn update_view(&self) {
         let imp = self.imp();
         match imp.track.borrow().as_ref() {
             Some(track) => {
-                self.set_tooltip_text(Some(format!("{} - {}", track.title(), track.artist()).as_str()));
+                self.set_tooltip_text(Some(
+                    format!("{} - {}", track.title(), track.artist()).as_str(),
+                ));
 
                 imp.track_title_label.set_label(track.title().as_str());
                 imp.album_name_label.set_label(track.album().as_str());
-                
+
                 //LOAD COVER ART
                 match track.cover_art_option() {
                     Some(id) => match self.load_image(id) {
@@ -280,7 +276,7 @@ impl QueueTrack {
             }
             None => {
                 return;
-            },
+            }
         }
     }
 
@@ -315,7 +311,6 @@ impl QueueTrack {
         };
     }
 
-
     pub fn set_edit_mode(&self, edit_mode: bool) {
         self.imp().edit_mode.set(edit_mode);
     }
@@ -323,7 +318,6 @@ impl QueueTrack {
     pub fn edit_mode(&self) -> bool {
         self.imp().edit_mode.get()
     }
-
 
     pub fn set_playlist_position(&self, position: u64) {
         self.imp().playlist_position.set(position);
@@ -345,47 +339,86 @@ impl QueueTrack {
     #[allow(dead_code)]
     fn create_menu(&self, track: Rc<Track>) {
         let imp = self.imp();
-    
+
         let main = gio::Menu::new();
         let menu = gio::Menu::new();
-    
-        let menu_item = gio::MenuItem::new(Some(&format!("Skip to «{}» (pos {})", track.title(), imp.playlist_position.get())), None);
-        menu_item.set_action_and_target_value(Some("win.skip-queue-to-track"), Some(&imp.playlist_position.get().to_variant()));
+
+        let menu_item = gio::MenuItem::new(
+            Some(&format!(
+                "Skip to «{}» (pos {})",
+                track.title(),
+                imp.playlist_position.get()
+            )),
+            None,
+        );
+        menu_item.set_action_and_target_value(
+            Some("win.skip-queue-to-track"),
+            Some(&imp.playlist_position.get().to_variant()),
+        );
         menu.append_item(&menu_item);
-    
-        let menu_item = gio::MenuItem::new(Some(&format!("Remove «{}» from Queue (pos {})", track.title(), imp.playlist_position.get())), None);
-        menu_item.set_action_and_target_value(Some("win.remove-track-from-queue"), Some(&imp.playlist_position.get().to_variant()));
+
+        let menu_item = gio::MenuItem::new(
+            Some(&format!(
+                "Remove «{}» from Queue (pos {})",
+                track.title(),
+                imp.playlist_position.get()
+            )),
+            None,
+        );
+        menu_item.set_action_and_target_value(
+            Some("win.remove-track-from-queue"),
+            Some(&imp.playlist_position.get().to_variant()),
+        );
         menu.append_item(&menu_item);
-    
-    
+
         main.append_section(Some("Queue"), &menu);
-    
-    
+
         let menu = gio::Menu::new();
-    
-        let menu_item = gio::MenuItem::new(Some(&format!("Go to Album «{}» Detail", track.album())), None);
-        menu_item.set_action_and_target_value(Some("win.go-to-album-detail"), Some(&track.album_id().to_variant()));
+
+        let menu_item = gio::MenuItem::new(
+            Some(&format!("Go to Album «{}» Detail", track.album())),
+            None,
+        );
+        menu_item.set_action_and_target_value(
+            Some("win.go-to-album-detail"),
+            Some(&track.album_id().to_variant()),
+        );
         menu.append_item(&menu_item);
-    
-        let menu_item = gio::MenuItem::new(Some(&format!("Go to Artist {} Detail", track.artist())), None);
-        menu_item.set_action_and_target_value(Some("win.go-to-artist-detail"), Some(&track.artist_id().to_variant()));
+
+        let menu_item = gio::MenuItem::new(
+            Some(&format!("Go to Artist {} Detail", track.artist())),
+            None,
+        );
+        menu_item.set_action_and_target_value(
+            Some("win.go-to-artist-detail"),
+            Some(&track.artist_id().to_variant()),
+        );
         menu.append_item(&menu_item);
-    
+
         main.append_section(Some("Navigate"), &menu);
-    
+
         let menu = gio::Menu::new();
-        
-        let menu_item = gio::MenuItem::new(Some(&format!("Create Playlist from «{}»", track.title())), None);
-        menu_item.set_action_and_target_value(Some("win.create-playlist-from-track"), Some(&track.id().to_variant()));
+
+        let menu_item = gio::MenuItem::new(
+            Some(&format!("Create Playlist from «{}»", track.title())),
+            None,
+        );
+        menu_item.set_action_and_target_value(
+            Some("win.create-playlist-from-track"),
+            Some(&track.id().to_variant()),
+        );
         menu.append_item(&menu_item);
-    
-        let menu_item = gio::MenuItem::new(Some(&format!("Add «{}» to Playlist", track.title())), None);
-        menu_item.set_action_and_target_value(Some("win.add-track-to-playlist"), Some(&track.id().to_variant()));
+
+        let menu_item =
+            gio::MenuItem::new(Some(&format!("Add «{}» to Playlist", track.title())), None);
+        menu_item.set_action_and_target_value(
+            Some("win.add-track-to-playlist"),
+            Some(&track.id().to_variant()),
+        );
         menu.append_item(&menu_item);
-    
+
         main.append_section(Some("Playlist"), &menu);
 
         imp.popover.set_menu_model(Some(&main));
     }
 }
-    
